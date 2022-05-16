@@ -1,9 +1,5 @@
-
 type TableColumn = {
   name: string;
-  nullable: boolean;
-  type: string;
-  maxLen: number;
   isPrimaryKey?: boolean;
   isForeignKey?: boolean;
   foreignTableName?: string;
@@ -12,6 +8,7 @@ type TableColumn = {
 
 type Table = {
   name: string;
+  schema: string;
   columns: Record<string, TableColumn>;
   isCollection?: boolean;
 };
@@ -19,9 +16,7 @@ type Table = {
 type TablesQueryResponse = {
   tableName: string;
   columnName: string;
-  isNullable: boolean;
-  dataType: string;
-  characterMaximumLength: number;
+  tableSchema: string;
 };
 
 type TableRowsResponse = Record<string, unknown>;
