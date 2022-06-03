@@ -11,6 +11,8 @@ const arango = new Database({
 });
 
 const migrate = async (databaseName: string) => {
+  console.time("migrate-timer");
+
   log('Checking if database exists');
   let database: boolean;
   try {
@@ -69,6 +71,7 @@ const migrate = async (databaseName: string) => {
     log.err('Failed to create edges collection');
   }
 
+  console.timeEnd('migrate-timer');
   log.ln('DONE!');
   process.exit(0);
 };

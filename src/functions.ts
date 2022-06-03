@@ -9,26 +9,21 @@ export const getTables = async (): Promise<Table[]> => {
     `SELECT
       table_name as "tableName",
       column_name as "columnName",
-      is_nullable as "isNullable",
-      data_type as "dataType",
-      character_maximum_length as "characterMaximumLength"
-    FROM information_schema.columns
-    WHERE table_schema = 'public';`
+	    table_schema as "tableSchema"
+     FROM information_schema.columns where table_schema <> 'information_schema' and  table_schema <> 'pg_catalog';`
   );
 
   for (const row of rows) {
     if (!tables[row.tableName]) {
       tables[row.tableName] = {
         name: row.tableName,
+        schema: row.tableSchema,
         columns: {},
       };
     }
 
     tables[row.tableName].columns[row.columnName] = {
       name: row.columnName,
-      nullable: row.isNullable,
-      type: row.dataType,
-      maxLen: row.characterMaximumLength,
     };
   }
 
@@ -87,7 +82,7 @@ export const transforRowsToNodes = async (
 ): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> => {
   const db = await Database.init();
   const { rows } = await db.query<TableRowsResponse>(
-    `select * from ${table.name};`
+    `select * from ${table.schema}.${table.name};`
   );
 
   const nodes: GraphNode[] = [];
@@ -99,7 +94,7 @@ export const transforRowsToNodes = async (
       (column) => column.isPrimaryKey
     );
 
-    node._key = primaryKey ? (row[primaryKey.name] as string) : uuid();
+    node._key = primaryKey ? (`${row[primaryKey.name]}` as string) : uuid();
 
     for (const columnName of Object.keys(row)) {
       if (table.columns[columnName].isForeignKey) {
