@@ -1,9 +1,9 @@
-import { getDatabaseTables, saveTableRowsToFile } from './functions';
-import { Database } from 'arangojs';
+import { Database as ArangoDatabase } from 'arangojs';
+import PgDatabase from './pg-database';
 import log from './log';
-import Stream from './streams/stream';
+import Stream from './stream';
 
-const arango = new Database({
+const arango = new ArangoDatabase({
   url: process.env.ARANGO_HOST,
   auth: {
     username: process.env.ARANGO_USERNAME,
@@ -40,21 +40,36 @@ const migrate = async (databaseName: string) => {
   //   log.err('Failed to create database');
   // }
 
-  log.ln('Fetching tables');
-  const tables = await getDatabaseTables();
 
-  let edges = [];
+  const database = new PgDatabase({
+    host: process.env.PG_HOST,
+    port: parseInt(process.env.PG_PORT, 10) || 5432,
+    database: process.env.PG_DATABASE,
+    user: process.env.PG_USER,
+    password: process.env.PG_PASSWORD,
+  });
+
+  await database.init();
 
   log.ln('Transforming rows to nodes');
+
+
   const nodeStream = new Stream('node');
   const edgeStream = new Stream('edge');
 
-  for (const table of tables) {
-    await saveTableRowsToFile(
-      table,
-      nodeStream,
-      edgeStream
-    );
+  await database.export(nodeStream, edgeStream);
+  // const tables = await getDatabaseTables();
+
+  let edges = [];
+
+
+
+  // for (const table of tables) {
+    // await saveTableRowsToFile(
+    //   table,
+    //   nodeStream,
+    //   edgeStream
+    // );
     // edges = [...edges, ...tableEdges];
     // if (tableNodes.length) {
     //   try {
@@ -67,7 +82,7 @@ const migrate = async (databaseName: string) => {
     //     log.err(`Failed to create "${table.name}" collection`);
     //   }
     // }
-  }
+  // }
 
   await nodeStream.close();
   await edgeStream.close();
