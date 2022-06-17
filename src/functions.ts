@@ -1,8 +1,22 @@
 import Database from './database';
 import { v4 as uuid } from 'uuid';
-import 'dotenv/config'
+import 'dotenv/config';
+import fs from 'fs';
 
-export const getTables = async (): Promise<Table[]> => {
+const MAX_FILE_SIZE_IN_BYTES = 524288000; // 500Mb
+
+const newWriteStream = (type: 'edge' | 'node'): fs.WriteStream => {
+  const id = `./data/${type}-${new Date().valueOf()}-${uuid()}.json`;
+  if (!fs.existsSync('./data')) {
+    fs.mkdirSync('./data');
+  }
+  return fs.createWriteStream(id);
+};
+
+/**
+ * @returns all the tables belonging to the database;
+ */
+export const getDatabaseTables = async (): Promise<Table[]> => {
   const db = await Database.init();
   const tables: Record<string, Table> = {};
   const { rows } = await db.query<TablesQueryResponse>(
@@ -28,7 +42,7 @@ export const getTables = async (): Promise<Table[]> => {
   }
 
   for (const table of Object.values(tables)) {
-    const keys = await getKeys(table.name);
+    const keys = await getTableKeys(table.name);
     keys.forEach((key) => {
       const column = tables[table.name].columns[key.columnName];
       if (key.type === 'FOREIGN KEY') {
@@ -41,24 +55,18 @@ export const getTables = async (): Promise<Table[]> => {
     });
   }
 
-  const output = Object.values(tables);
-  output.forEach((table) => {
-    if (
-      Object.values(table.columns).filter((column) => column.isForeignKey)
-        .length > 1
-    ) {
-      table.isCollection = true;
-    }
-  });
-
-  return output;
+  return Object.values(tables);
 };
 
-export const getKeys = async (
-  tableName: string
-): Promise<TableKeysResponse[]> => {
+/**
+ * Given a table, it returns all the FOREIGN KEYS and PRIMARY KEYS
+ *
+ * @param tableName: The name of the table to get the keys from
+ * @returns {TableKey[]} An array of keys belonging to the table
+ */
+export const getTableKeys = async (tableName: string): Promise<TableKey[]> => {
   const db = await Database.init();
-  const { rows } = await db.query<TableKeysResponse>(
+  const { rows } = await db.query<TableKey>(
     `SELECT
       kcu.column_name AS "columnName",
       tc.constraint_type AS type,
@@ -72,43 +80,97 @@ export const getKeys = async (
       JOIN information_schema.constraint_column_usage AS ccu
         ON ccu.constraint_name = tc.constraint_name
         AND ccu.table_schema = tc.table_schema
-    WHERE tc.constraint_type in ('FOREIGN KEY', 'PRIMARY KEY') AND tc.table_name='${tableName}';`
+    WHERE tc.constraint_type IN ('FOREIGN KEY', 'PRIMARY KEY') AND tc.table_name='${tableName}';`
   );
   return rows;
 };
 
-export const transforRowsToNodes = async (
-  table: Table
-): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> => {
+export const saveTableRowsToFile = async (table: Table): Promise<void> => {
   const db = await Database.init();
   const { rows } = await db.query<TableRowsResponse>(
-    `select * from ${table.schema}.${table.name};`
+    `SELECT * FROM ${table.schema}.${table.name};`
   );
 
-  const nodes: GraphNode[] = [];
-  const edges: GraphEdge[] = [];
+  let nodesFileStream: fs.WriteStream;
+  let nodeFileStreamSize: number;
+  let edgesFileStream: fs.WriteStream;
+  let edgesFileStreamSize: number;
 
-  for (const row of rows) {
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
     const node = {} as GraphNode;
     const primaryKey = Object.values(table.columns).find(
-      (column) => column.isPrimaryKey
+      (column) => column.isForeignKey
     );
 
     node._key = primaryKey ? (`${row[primaryKey.name]}` as string) : uuid();
 
+    let edgeString = '';
+    let nodeString = '';
+
     for (const columnName of Object.keys(row)) {
       if (table.columns[columnName].isForeignKey) {
-        edges.push({
+        edgeString += `${JSON.stringify({
           _from: `${table.name}/${node._key}`,
           _to: `${table.columns[columnName].foreignTableName}/${row[columnName]}`,
-        });
+        })},`;
       } else {
         node[columnName] = row[columnName];
       }
     }
 
-    nodes.push(node);
+    if (edgeString.length > 1) {
+      if (i === rows.length - 1) {
+        edgeString = edgeString.slice(0, edgeString.length - 1);
+      }
+
+      if (!edgesFileStream) {
+        edgesFileStream = newWriteStream('edge');
+        edgesFileStreamSize = 0;
+        edgesFileStream.write('[');
+      }
+
+      edgesFileStream.write(edgeString);
+      edgesFileStreamSize += Buffer.byteLength(edgeString, 'utf-8');
+
+      if (edgesFileStreamSize > MAX_FILE_SIZE_IN_BYTES) {
+        edgesFileStream.write(']');
+        edgesFileStream.close();
+        edgesFileStream = undefined;
+      }
+    }
+
+    if (Object.keys(node).length > 0) {
+      nodeString = `${JSON.stringify(node)},`;
+
+      if (i === rows.length - 1) {
+        nodeString = nodeString.slice(0, nodeString.length - 1);
+      }
+
+      if (!nodesFileStream) {
+        nodesFileStream = newWriteStream('node');
+        nodeFileStreamSize = 0;
+        nodesFileStream.write('[');
+      }
+
+      nodesFileStream.write(nodeString);
+      nodeFileStreamSize += Buffer.byteLength(nodeString, 'utf-8');
+
+      if (nodeFileStreamSize > MAX_FILE_SIZE_IN_BYTES) {
+        nodesFileStream.write(']');
+        nodesFileStream.close();
+        nodesFileStream = undefined;
+      }
+    }
   }
 
-  return { nodes, edges };
+  if (nodesFileStream) {
+    nodesFileStream.write(']');
+    nodesFileStream.close();
+  }
+
+  if (edgesFileStream) {
+    edgesFileStream.write(']');
+    edgesFileStream.close();
+  }
 };

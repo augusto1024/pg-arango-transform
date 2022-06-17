@@ -9,6 +9,7 @@ log.ln = (message: string) => {
 log.err = (message: string) => {
   console.error(`ERR: ${message}...`);
   console.log('Terminating...');
+  process.exit(1);
 };
 
 export default log;
