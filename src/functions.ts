@@ -2,6 +2,7 @@ import Database from './database';
 import { v4 as uuid } from 'uuid';
 import 'dotenv/config';
 import fs from 'fs';
+import Stream from './streams/stream';
 
 const MAX_FILE_SIZE_IN_BYTES = 524288000; // 500Mb
 
@@ -86,15 +87,13 @@ export const getTableKeys = async (tableName: string): Promise<TableKey[]> => {
 };
 
 export const saveTableRowsToFile = async (table: Table): Promise<void> => {
+  const NodeStream = new Stream('node');
+  const EdgeStream = new Stream('edge');
+
   const db = await Database.init();
   const { rows } = await db.query<TableRowsResponse>(
     `SELECT * FROM ${table.schema}.${table.name};`
   );
-
-  let nodesFileStream: fs.WriteStream;
-  let nodeFileStreamSize: number;
-  let edgesFileStream: fs.WriteStream;
-  let edgesFileStreamSize: number;
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
@@ -105,72 +104,22 @@ export const saveTableRowsToFile = async (table: Table): Promise<void> => {
 
     node._key = primaryKey ? (`${row[primaryKey.name]}` as string) : uuid();
 
-    let edgeString = '';
-    let nodeString = '';
-
     for (const columnName of Object.keys(row)) {
       if (table.columns[columnName].isForeignKey) {
-        edgeString += `${JSON.stringify({
+        const edge = {
           _from: `${table.name}/${node._key}`,
           _to: `${table.columns[columnName].foreignTableName}/${row[columnName]}`,
-        })},`;
+        };
+
+        EdgeStream.push(edge);
       } else {
         node[columnName] = row[columnName];
       }
     }
 
-    if (edgeString.length > 1) {
-      if (i === rows.length - 1) {
-        edgeString = edgeString.slice(0, edgeString.length - 1);
-      }
-
-      if (!edgesFileStream) {
-        edgesFileStream = newWriteStream('edge');
-        edgesFileStreamSize = 0;
-        edgesFileStream.write('[');
-      }
-
-      edgesFileStream.write(edgeString);
-      edgesFileStreamSize += Buffer.byteLength(edgeString, 'utf-8');
-
-      if (edgesFileStreamSize > MAX_FILE_SIZE_IN_BYTES) {
-        edgesFileStream.write(']');
-        edgesFileStream.close();
-        edgesFileStream = undefined;
-      }
-    }
-
-    if (Object.keys(node).length > 0) {
-      nodeString = `${JSON.stringify(node)},`;
-
-      if (i === rows.length - 1) {
-        nodeString = nodeString.slice(0, nodeString.length - 1);
-      }
-
-      if (!nodesFileStream) {
-        nodesFileStream = newWriteStream('node');
-        nodeFileStreamSize = 0;
-        nodesFileStream.write('[');
-      }
-
-      nodesFileStream.write(nodeString);
-      nodeFileStreamSize += Buffer.byteLength(nodeString, 'utf-8');
-
-      if (nodeFileStreamSize > MAX_FILE_SIZE_IN_BYTES) {
-        nodesFileStream.write(']');
-        nodesFileStream.close();
-        nodesFileStream = undefined;
-      }
-    }
+    NodeStream.push(node);
   }
 
-  if (nodesFileStream) {
-    nodesFileStream.write(']');
-    nodesFileStream.close();
-  }
-
-  if (edgesFileStream) {
-    edgesFileStream.write(']');
-    edgesFileStream.close();
-  }
+  NodeStream.close();
+  EdgeStream.close();
 };
