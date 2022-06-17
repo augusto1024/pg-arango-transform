@@ -18,31 +18,35 @@ class Stream {
     return fs.createWriteStream(id);
   }
 
-  private write(data: string) {
-    if (!this.fileStream) {
-      this.fileStream = this.newStream();
-      this.fileStream.write('[');
-    }
+  private async write(data: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.fileStream) {
+        this.fileStream = this.newStream();
+        this.fileStream.write('[');
+        console.log('new stream');
+      }
 
-    this.fileStream.write(data);
+      this.fileStream.write(data, (err) => {
+        if (err) {
+          return reject(err);
+        }
+        return resolve();
+      });
+    });
   }
 
-  public push(data: object) {
+  public async push(data: object) {
     if (this.lastObjectWritten) {
-      this.write(`${JSON.stringify(this.lastObjectWritten)},`);
+      await this.write(`${JSON.stringify(this.lastObjectWritten)},`);
     }
 
     this.lastObjectWritten = data;
   }
 
-  public close() {
-    if (this.fileStream) {
-      if (this.lastObjectWritten) {
-        this.write(`${JSON.stringify(this.lastObjectWritten)}`);
-      }
-      this.write(']');
-      this.fileStream.close();
-    }
+  public async close() {
+    await this.write(JSON.stringify(this.lastObjectWritten));
+    await this.write(']');
+    this.fileStream.close();
   }
 }
 

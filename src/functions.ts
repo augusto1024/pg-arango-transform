@@ -1,18 +1,7 @@
 import Database from './database';
 import { v4 as uuid } from 'uuid';
 import 'dotenv/config';
-import fs from 'fs';
 import Stream from './streams/stream';
-
-const MAX_FILE_SIZE_IN_BYTES = 524288000; // 500Mb
-
-const newWriteStream = (type: 'edge' | 'node'): fs.WriteStream => {
-  const id = `./data/${type}-${new Date().valueOf()}-${uuid()}.json`;
-  if (!fs.existsSync('./data')) {
-    fs.mkdirSync('./data');
-  }
-  return fs.createWriteStream(id);
-};
 
 /**
  * @returns all the tables belonging to the database;
@@ -86,17 +75,22 @@ export const getTableKeys = async (tableName: string): Promise<TableKey[]> => {
   return rows;
 };
 
-export const saveTableRowsToFile = async (table: Table): Promise<void> => {
-  const NodeStream = new Stream('node');
-  const EdgeStream = new Stream('edge');
-
+/**
+ * Given a table in the database, it gets all the rows in it and saves them as node objects in the
+ * nodes JSON file.
+ * If a column in the table is a foreign key, it will not be saved as a node object, but it will be save
+ * as an edge object instead in the edges JSON file.
+ * @param {Table} table The Table object representing the table in the database
+ * @param nodeStream The Stream in which nodes will be written
+ * @param edgeStream The Stream in which edges will be written
+ */
+export const saveTableRowsToFile = async (table: Table, nodeStream: Stream, edgeStream: Stream): Promise<void> => {
   const db = await Database.init();
   const { rows } = await db.query<TableRowsResponse>(
     `SELECT * FROM ${table.schema}.${table.name};`
   );
 
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
+  for (const row of rows) {
     const node = {} as GraphNode;
     const primaryKey = Object.values(table.columns).find(
       (column) => column.isForeignKey
@@ -111,15 +105,12 @@ export const saveTableRowsToFile = async (table: Table): Promise<void> => {
           _to: `${table.columns[columnName].foreignTableName}/${row[columnName]}`,
         };
 
-        EdgeStream.push(edge);
+        await edgeStream.push(edge);
       } else {
         node[columnName] = row[columnName];
       }
     }
 
-    NodeStream.push(node);
+    await nodeStream.push(node);
   }
-
-  NodeStream.close();
-  EdgeStream.close();
 };

@@ -1,6 +1,7 @@
 import { getDatabaseTables, saveTableRowsToFile } from './functions';
 import { Database } from 'arangojs';
 import log from './log';
+import Stream from './streams/stream';
 
 const arango = new Database({
   url: process.env.ARANGO_HOST,
@@ -45,9 +46,14 @@ const migrate = async (databaseName: string) => {
   let edges = [];
 
   log.ln('Transforming rows to nodes');
+  const nodeStream = new Stream('node');
+  const edgeStream = new Stream('edge');
+
   for (const table of tables) {
     await saveTableRowsToFile(
-      table
+      table,
+      nodeStream,
+      edgeStream
     );
     // edges = [...edges, ...tableEdges];
     // if (tableNodes.length) {
@@ -62,6 +68,9 @@ const migrate = async (databaseName: string) => {
     //   }
     // }
   }
+
+  await nodeStream.close();
+  await edgeStream.close();
 
   // log.ln('Creating edges...');
   // try {
