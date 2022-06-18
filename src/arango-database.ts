@@ -1,5 +1,5 @@
 import { Database } from 'arangojs';
-import { Config } from "arangojs/connection";
+import { Config } from 'arangojs/connection';
 
 class ArangoDatabase {
   private config: Config;
@@ -17,9 +17,18 @@ class ArangoDatabase {
     }
   }
 
-  public async import(tableName: string, nodes: Record<string, unknown>[]): Promise<void> {
-    await this.connection.createCollection(tableName);
-    await this.connection.collection(tableName).import(nodes);
+  public async import(
+    collection: string,
+    nodes: Record<string, unknown>[],
+    options?: { isEdge: boolean }
+  ): Promise<void> {
+    if (options?.isEdge) {
+      await this.connection.createEdgeCollection(collection);
+      await this.connection.collection(collection).import(nodes);
+    } else {
+      await this.connection.createCollection(collection);
+      await this.connection.collection(collection).import(nodes);
+    }
   }
 }
 

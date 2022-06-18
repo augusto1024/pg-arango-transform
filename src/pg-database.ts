@@ -22,10 +22,9 @@ export default class PgDatabase {
 
   /**
    * It saves all the rows on the database tables as nodes or edges into JSON files.
-   * @param nodeStream The Stream in which nodes will be written
-   * @param edgeStream The Stream in which edges will be written
+   * @param stream The Stream in which nodes/edges will be written
    */
-  public async export(nodeStream: Stream, edgeStram: Stream) {
+  public async export(stream: Stream) {
     if (!this.tables) {
       throw new Error(
         'ERROR: Database must be initialized before exporting it'
@@ -33,7 +32,7 @@ export default class PgDatabase {
     }
 
     for (const table of this.tables) {
-      await this.exportTable(table, nodeStream, edgeStram);
+      await this.exportTable(table, stream);
     }
   }
 
@@ -43,14 +42,9 @@ export default class PgDatabase {
    * If a column in the table is a foreign key, it will not be saved as a node object, but it will be save
    * as an edge object instead in the edges JSON file.
    * @param {Table} table The Table object representing the table in the database
-   * @param nodeStream The Stream in which nodes will be written
-   * @param edgeStream The Stream in which edges will be written
+   * @param stream The Stream in which nodes/edges will be written
    */
-  private async exportTable(
-    table: Table,
-    nodeStream: Stream,
-    edgeStream: Stream
-  ) {
+  private async exportTable(table: Table, stream: Stream) {
     const { rows } = await this.connection.query<TableRowsResponse>(
       `SELECT * FROM ${table.schema}.${table.name};`
     );
@@ -70,13 +64,13 @@ export default class PgDatabase {
             _to: `${table.columns[columnName].foreignTableName}/${row[columnName]}`,
           };
 
-          await edgeStream.push(edge);
+          await stream.push('edges', edge);
         } else {
           node[columnName] = row[columnName];
         }
       }
 
-      await nodeStream.push(node);
+      await stream.push(table.name, node);
     }
   }
 

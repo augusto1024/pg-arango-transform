@@ -2,50 +2,57 @@ import fs from 'fs';
 import { v4 as uuid } from 'uuid';
 
 class Stream {
-  private fileStream: fs.WriteStream;
-  private type: 'node' | 'edge';
-  private lastObjectWritten: object;
+  private fileStreams: Record<string, fs.WriteStream>;
 
-  constructor(type: 'node' | 'edge') {
-    this.type = type;
+  constructor() {
+    this.fileStreams = {};
   }
 
-  private newStream(): fs.WriteStream {
-    const id = `./data/${this.type}-${new Date().valueOf()}-${uuid()}.json`;
+  private newStream(collection: string): fs.WriteStream {
+    const id = `./data/${collection}-${new Date().valueOf()}-${uuid()}.json`;
     if (!fs.existsSync('./data')) {
       fs.mkdirSync('./data');
     }
     return fs.createWriteStream(id);
   }
 
-  private async write(data: string): Promise<void> {
+  private async write(
+    collection: string,
+    element: string,
+    options?: { close?: boolean }
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (!this.fileStream) {
-        this.fileStream = this.newStream();
-        this.fileStream.write('[');
+      let addLeadingComma = options?.close ? false : true;
+      if (!this.fileStreams[collection]) {
+        this.fileStreams[collection] = this.newStream(collection);
+        this.fileStreams[collection].write('[');
+        addLeadingComma = false;
       }
 
-      this.fileStream.write(data, (err) => {
-        if (err) {
-          return reject(err);
+      this.fileStreams[collection].write(
+        addLeadingComma ? `,${element}` : element,
+        (err) => {
+          if (err) {
+            return reject(err);
+          }
+          return resolve();
         }
-        return resolve();
-      });
+      );
     });
   }
 
-  public async push(data: object) {
-    if (this.lastObjectWritten) {
-      await this.write(`${JSON.stringify(this.lastObjectWritten)},`);
+  public async push(collection: string, element: object) {
+    if (!element) {
+      console.log('NO ELEMENT');
     }
-
-    this.lastObjectWritten = data;
+    await this.write(collection, `${JSON.stringify(element)}`);
   }
 
   public async close() {
-    await this.write(JSON.stringify(this.lastObjectWritten));
-    await this.write(']');
-    this.fileStream.close();
+    for (const collection of Object.keys(this.fileStreams)) {
+      await this.write(collection, ']', { close: true });
+      this.fileStreams[collection].close();
+    }
   }
 
   public async getFileNames(): Promise<string[]> {
@@ -54,9 +61,9 @@ class Stream {
         if (err) {
           return reject(err);
         }
-        return resolve(files.filter(file => file.startsWith(this.type)));
+        return resolve(files);
       });
-    })
+    });
   }
 
   public async getFile(name: string): Promise<Record<string, unknown>[]> {
@@ -66,8 +73,8 @@ class Stream {
           return reject(err);
         }
         return resolve(JSON.parse(data));
-      })
-    })
+      });
+    });
   }
 }
 

@@ -25,24 +25,19 @@ const migrate = async () => {
   await arangoDatabase.init();
   await postgresDatabase.init();
 
-  const nodeStream = new Stream('node');
-  const edgeStream = new Stream('edge');
+  const stream = new Stream();
 
-  await postgresDatabase.export(nodeStream, edgeStream);
+  await postgresDatabase.export(stream);
 
-  await nodeStream.close();
-  await edgeStream.close();
+  await stream.close();
 
-  const nodeFiles = await nodeStream.getFileNames();
+  const nodeFiles = await stream.getFileNames();
   for (const fileName of nodeFiles) {
-    const file = await nodeStream.getFile(fileName);
-    await arangoDatabase.import('test', file);
-  }
-
-  const edgeFiles = await edgeStream.getFileNames();
-  for (const fileName of edgeFiles) {
-    const file = await edgeStream.getFile(fileName);
-    await arangoDatabase.import('edges', file);
+    const collection = fileName.match(/^[^-]+/)[0];
+    const file = await stream.getFile(fileName);
+    await arangoDatabase.import(collection, file, {
+      isEdge: collection === 'edges',
+    });
   }
 
   console.timeEnd('migrate-timer');
