@@ -1,5 +1,4 @@
 import { Client, ClientConfig } from 'pg';
-import log from './log';
 
 export default class Connection {
   private config: ClientConfig;
@@ -13,10 +12,8 @@ export default class Connection {
     this.client = new Client(this.config);
 
     try {
-      log('Connecting to Postgres database')
       await this.client.connect();
     } catch (err) {
-      log.err('Failed to connect to Postgres database');
       throw err;
     }
   }

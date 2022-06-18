@@ -23,7 +23,6 @@ class Stream {
       if (!this.fileStream) {
         this.fileStream = this.newStream();
         this.fileStream.write('[');
-        console.log('new stream');
       }
 
       this.fileStream.write(data, (err) => {
@@ -47,6 +46,28 @@ class Stream {
     await this.write(JSON.stringify(this.lastObjectWritten));
     await this.write(']');
     this.fileStream.close();
+  }
+
+  public async getFileNames(): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+      fs.readdir('./data', (err, files) => {
+        if (err) {
+          return reject(err);
+        }
+        return resolve(files.filter(file => file.startsWith(this.type)));
+      });
+    })
+  }
+
+  public async getFile(name: string): Promise<Record<string, unknown>[]> {
+    return new Promise((resolve, reject) => {
+      fs.readFile(`./data/${name}`, 'utf-8', (err, data) => {
+        if (err) {
+          return reject(err);
+        }
+        return resolve(JSON.parse(data));
+      })
+    })
   }
 }
 
