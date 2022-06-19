@@ -30,6 +30,16 @@ class ArangoDatabase {
       await this.connection.collection(collection).import(nodes);
     }
   }
+
+  public async createGraph(name: string, collections: string[]): Promise<void> {
+    await this.connection.createGraph(name, [
+      {
+        collection: 'edges',
+        from: collections,
+        to: collections,
+      },
+    ]);
+  }
 }
 
 export default ArangoDatabase;

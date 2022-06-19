@@ -31,14 +31,21 @@ const migrate = async () => {
 
   await stream.close();
 
+  const collections = [];
+
   const nodeFiles = await stream.getFileNames();
   for (const fileName of nodeFiles) {
     const collection = fileName.match(/^[^-]+/)[0];
+    collection !== 'edges' && collections.push(collection);
+
     const file = await stream.getFile(fileName);
+
     await arangoDatabase.import(collection, file, {
       isEdge: collection === 'edges',
     });
   }
+
+  await arangoDatabase.createGraph('TestGraph', collections);
 
   console.timeEnd('migrate-timer');
   process.exit(0);
