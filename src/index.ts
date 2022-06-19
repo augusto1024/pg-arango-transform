@@ -1,6 +1,6 @@
-import ArangoDatabase from './arango-database';
-import PgDatabase from './pg-database';
-import Stream from './stream';
+import ArangoDatabase from './database/arango-database';
+import PgDatabase from './database/pg-database';
+import Stream from './utils/stream';
 
 const migrate = async () => {
   console.time('migrate-timer');

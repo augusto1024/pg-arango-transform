@@ -1,14 +1,14 @@
-import { ClientConfig } from 'pg';
-import Connection from './connection';
-import Stream from './stream';
+import { Client, ClientConfig } from 'pg';
+import Stream from '../utils/stream';
 import { v4 as uuid } from 'uuid';
 
 export default class PgDatabase {
-  private connection: Connection;
+  private config: ClientConfig;
+  private connection: Client;
   private tables: Table[];
 
   constructor(config: ClientConfig) {
-    this.connection = new Connection(config);
+    this.config = config;
   }
 
   /**
@@ -16,7 +16,8 @@ export default class PgDatabase {
    * of all of its tables.
    */
   public async init(): Promise<void> {
-    await this.connection.init();
+    this.connection = new Client(this.config);
+    await this.connection.connect();
     this.tables = await this.getTables();
   }
 
