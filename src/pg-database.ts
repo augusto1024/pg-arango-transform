@@ -49,11 +49,12 @@ export default class PgDatabase {
       `SELECT * FROM ${table.schema}.${table.name};`
     );
 
+    const primaryKey = Object.values(table.columns).find(
+      (column) => column.isPrimaryKey
+    );
+
     for (const row of rows) {
       const node = {} as GraphNode;
-      const primaryKey = Object.values(table.columns).find(
-        (column) => column.isForeignKey
-      );
 
       node._key = primaryKey ? (`${row[primaryKey.name]}` as string) : uuid();
 
