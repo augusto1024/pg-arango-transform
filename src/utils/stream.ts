@@ -41,7 +41,7 @@ class Stream {
     });
   }
 
-  public async push(collection: string, element: object): Promsie<void> {
+  public async push(collection: string, element: object): Promise<void> {
     await this.write(collection, `${JSON.stringify(element)}`);
   }
 
