@@ -1,79 +1,54 @@
-import { getTables, transforRowsToNodes } from './functions';
-import { Database } from 'arangojs';
-import log from './log';
+import ArangoDatabase from './database/arango-database';
+import PgDatabase from './database/pg-database';
+import Stream from './utils/stream';
 
-const arango = new Database({
-  url: process.env.ARANGO_HOST,
-  auth: {
-    username: process.env.ARANGO_USERNAME,
-    password: process.env.ARANGO_PASSWORD,
-  },
-});
+const migrate = async () => {
+  console.time('migrate-timer');
 
-const migrate = async (databaseName: string) => {
-  console.time("migrate-timer");
+  const arangoDatabase = new ArangoDatabase({
+    databaseName: process.env.ARANGO_DATABASE,
+    url: process.env.ARANGO_HOST,
+    auth: {
+      username: process.env.ARANGO_USERNAME,
+      password: process.env.ARANGO_PASSWORD,
+    },
+  });
 
-  log('Checking if database exists');
-  let database: boolean;
-  try {
-    database = await arango.database(databaseName).exists();
-  } catch {
-    log.err('Failed to check if database exists');
-  }
-  if (database) {
-    log('Droping database');
-    try {
-      await arango.dropDatabase(databaseName);
-    } catch {
-      log.err('Failed to drop database');
-    }
-  } else {
-    log(`LOG: Database doesn't exist`);
-  }
-  log('Creating database');
-  try {
-    await arango.createDatabase(databaseName, {
-      users: [{ username: 'root' }],
+  const postgresDatabase = new PgDatabase({
+    host: process.env.PG_HOST,
+    port: parseInt(process.env.PG_PORT, 10) || 5432,
+    database: process.env.PG_DATABASE,
+    user: process.env.PG_USER,
+    password: process.env.PG_PASSWORD,
+  });
+
+  await arangoDatabase.init();
+  await postgresDatabase.init();
+
+  const stream = new Stream();
+
+  await postgresDatabase.export(stream);
+
+  await stream.close();
+
+  const collections = [];
+
+  const nodeFiles = await stream.getFileNames();
+  for (const fileName of nodeFiles) {
+    const collection = fileName.match(/^[^-]+/)[0];
+    collection !== 'edges' && collections.push(collection);
+
+    const file = await stream.getFile(fileName);
+
+    await arangoDatabase.import(collection, file, {
+      isEdge: collection === 'edges',
     });
-  } catch {
-    log.err('Failed to create database');
   }
 
-  log.ln('Fetching tables');
-  const tables = await getTables();
-
-  let edges = [];
-
-  log.ln('Transforming rows to nodes');
-  for (const table of tables) {
-    const { nodes: tableNodes, edges: tableEdges } = await transforRowsToNodes(
-      table
-    );
-    edges = [...edges, ...tableEdges];
-    if (tableNodes.length) {
-      try {
-        await arango.database(databaseName).createCollection(table.name);
-        await arango
-          .database(databaseName)
-          .collection(table.name)
-          .import(tableNodes);
-      } catch {
-        log.err(`Failed to create "${table.name}" collection`);
-      }
-    }
-  }
-
-  log.ln('Creating edges...');
-  try {
-    await arango.database(databaseName).createEdgeCollection('edges');
-    await arango.database(databaseName).collection('edges').import(edges);
-  } catch {
-    log.err('Failed to create edges collection');
-  }
+  await arangoDatabase.createGraph('TestGraph', collections);
 
   console.timeEnd('migrate-timer');
-  log.ln('DONE!');
   process.exit(0);
 };
 
-migrate('test');
+migrate();

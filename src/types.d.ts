@@ -10,7 +10,6 @@ type Table = {
   name: string;
   schema: string;
   columns: Record<string, TableColumn>;
-  isCollection?: boolean;
 };
 
 type TablesQueryResponse = {
@@ -21,7 +20,7 @@ type TablesQueryResponse = {
 
 type TableRowsResponse = Record<string, unknown>;
 
-type TableKeysResponse = {
+type TableKey = {
   columnName: string;
   type: 'FOREIGN KEY' | 'PRIMARY KEY';
   foreignTableName: string;
