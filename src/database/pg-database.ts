@@ -23,9 +23,9 @@ export default class PgDatabase {
 
   /**
    * It saves all the rows on the database tables as nodes or edges into JSON files.
-   * @param stream The Stream in which nodes/edges will be written
+   * @param stream The Stream in which nodes/edges will be written.
    */
-  public async export(stream: Stream) {
+  public async export(stream: Stream): Promise<void> {
     if (!this.tables) {
       throw new Error(
         'ERROR: Database must be initialized before exporting it'
@@ -42,8 +42,8 @@ export default class PgDatabase {
    * nodes JSON file.
    * If a column in the table is a foreign key, it will not be saved as a node object, but it will be save
    * as an edge object instead in the edges JSON file.
-   * @param {Table} table The Table object representing the table in the database
-   * @param stream The Stream in which nodes/edges will be written
+   * @param {Table} table The Table object representing the table in the database.
+   * @param stream The Stream in which nodes/edges will be written.
    */
   private async exportTable(table: Table, stream: Stream) {
     const { rows } = await this.connection.query<TableRowsResponse>(
@@ -77,7 +77,7 @@ export default class PgDatabase {
   }
 
   /**
-   * @returns all the tables belonging to the database;
+   * @returns all the tables belonging to the database.
    */
   private async getTables(): Promise<Table[]> {
     const tables: Record<string, Table> = {};
@@ -121,10 +121,10 @@ export default class PgDatabase {
   }
 
   /**
-   * Given a table, it returns all the FOREIGN KEYS and PRIMARY KEYS
+   * Given a table, it returns all the FOREIGN KEYS and PRIMARY KEYS.
    *
-   * @param tableName: The name of the table to get the keys from
-   * @returns {TableKey[]} An array of keys belonging to the table
+   * @param tableName: The name of the table to get the keys from.
+   * @returns {TableKey[]} An array of keys belonging to the table.
    */
   private async getTableKeys(tableName: string): Promise<TableKey[]> {
     const { rows } = await this.connection.query<TableKey>(

@@ -41,14 +41,11 @@ class Stream {
     });
   }
 
-  public async push(collection: string, element: object) {
-    if (!element) {
-      console.log('NO ELEMENT');
-    }
+  public async push(collection: string, element: object): Promsie<void> {
     await this.write(collection, `${JSON.stringify(element)}`);
   }
 
-  public async close() {
+  public async close(): Promise<void> {
     for (const collection of Object.keys(this.fileStreams)) {
       await this.write(collection, ']', { close: true });
       this.fileStreams[collection].close();
