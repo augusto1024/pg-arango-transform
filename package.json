@@ -1,9 +1,9 @@
 {
-  "name": "tesis-test",
+  "name": "pg-arango-transform",
   "version": "1.0.0",
   "description": "",
-  "main": "index.ts",
-  "types": "types.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
     "start": "npm run build && rm -rf data && node  -r dotenv/config dist/index.js",

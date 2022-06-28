@@ -9,7 +9,11 @@ class ArangoDatabase {
     this.config = config;
   }
 
-  public async init() {
+  /**
+   * Establishes a connection with the database and checks if the
+   * database exists.
+   */
+  public async init(): Promise<void> {
     this.connection = new Database(this.config);
     const exists = await this.connection.exists();
     if (!exists) {
@@ -17,6 +21,12 @@ class ArangoDatabase {
     }
   }
 
+  /**
+   *
+   * @param collection The name of the collection to import.
+   * @param nodes The nodes to insert into the collection.
+   * @param options Options object. "isEdge" stablishes if the collection should be an edge collection or not.
+   */
   public async import(
     collection: string,
     nodes: Record<string, unknown>[],
@@ -31,6 +41,11 @@ class ArangoDatabase {
     }
   }
 
+  /**
+   *
+   * @param name The name of the graph.
+   * @param collections The collection names to add to the graph.
+   */
   public async createGraph(name: string, collections: string[]): Promise<void> {
     await this.connection.createGraph(name, [
       {

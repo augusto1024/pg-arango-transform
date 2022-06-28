@@ -6,13 +6,14 @@ class Stream {
 
   constructor() {
     this.fileStreams = {};
+    if (fs.existsSync('./data')) {
+      fs.rmSync('./data', { recursive: true });
+    }
+    fs.mkdirSync('./data');
   }
 
   private newStream(collection: string): fs.WriteStream {
     const id = `./data/${collection}-${new Date().valueOf()}-${uuid()}.json`;
-    if (!fs.existsSync('./data')) {
-      fs.mkdirSync('./data');
-    }
     return fs.createWriteStream(id);
   }
 
@@ -41,14 +42,11 @@ class Stream {
     });
   }
 
-  public async push(collection: string, element: object) {
-    if (!element) {
-      console.log('NO ELEMENT');
-    }
+  public async push(collection: string, element: object): Promise<void> {
     await this.write(collection, `${JSON.stringify(element)}`);
   }
 
-  public async close() {
+  public async close(): Promise<void> {
     for (const collection of Object.keys(this.fileStreams)) {
       await this.write(collection, ']', { close: true });
       this.fileStreams[collection].close();
