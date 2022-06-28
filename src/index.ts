@@ -6,8 +6,6 @@ import Stream from './utils/stream';
 
 type MigrateOptions = {
   createGraph?: boolean;
-  saveTransformFiles?: boolean;
-  transformFilesPath?: string;
   graphName?: string;
 };
 
@@ -94,18 +92,12 @@ class Transform {
    * - saveTransformFiles: If true, the transformation files will be saved.
    * - transformFilesPath: The path for the directory to store the transformation files.
    */
-  public async migrate(options?: MigrateOptions): Promise<void> {
+  public async migrate(options: MigrateOptions = {}): Promise<void> {
     this.checkInit();
 
     if (options.createGraph && !options.graphName) {
       throw new Error(
         'You need to set the graph name in order to create it. Please set the "graphName" property to the graph name.'
-      );
-    }
-
-    if (options.saveTransformFiles && !options.transformFilesPath) {
-      throw new Error(
-        'You need to set the file path in order to save transform files. Please set the "transformFilesPath" property to the desired path.'
       );
     }
 
