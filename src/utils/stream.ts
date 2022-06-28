@@ -6,13 +6,14 @@ class Stream {
 
   constructor() {
     this.fileStreams = {};
+    if (fs.existsSync('./data')) {
+      fs.rmSync('./data', { recursive: true });
+    }
+    fs.mkdirSync('./data');
   }
 
   private newStream(collection: string): fs.WriteStream {
     const id = `./data/${collection}-${new Date().valueOf()}-${uuid()}.json`;
-    if (!fs.existsSync('./data')) {
-      fs.mkdirSync('./data');
-    }
     return fs.createWriteStream(id);
   }
 
