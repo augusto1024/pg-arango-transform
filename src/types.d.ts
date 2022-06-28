@@ -29,3 +29,11 @@ type TableKey = {
 
 type GraphNode = Record<string, unknown> & { _key: string };
 type GraphEdge = Record<string, unknown> & { _from: string; _to: string };
+
+type NodePreview = { id: number; label: string };
+type EdgePreview = { from: number; to: number };
+
+type GraphPreview = {
+  nodes: NodePreview[];
+  edges: EdgePreview[];
+}

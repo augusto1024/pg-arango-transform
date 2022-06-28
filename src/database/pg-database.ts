@@ -79,7 +79,11 @@ export default class PgDatabase {
   /**
    * @returns all the tables belonging to the database.
    */
-  private async getTables(): Promise<Table[]> {
+  public async getTables(): Promise<Table[]> {
+    if (this.tables) {
+      return this.tables;
+    }
+
     const tables: Record<string, Table> = {};
     const { rows } = await this.connection.query<TablesQueryResponse>(
       `SELECT

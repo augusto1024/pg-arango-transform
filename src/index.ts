@@ -20,10 +20,12 @@ class Transform {
    * @param postgresConfig The configuration for the Postgres database.
    * @param arangoConfig The configuration for the Arango database.
    */
-  public async init(postgresConfig: ClientConfig, arangoConfig: Config): Promise<void> {
+  public async init(
+    postgresConfig: ClientConfig,
+    arangoConfig: Config
+  ): Promise<void> {
     this.arangoDatabase = new ArangoDatabase(arangoConfig);
     this.postgresDatabase = new PgDatabase(postgresConfig);
-
 
     try {
       await this.arangoDatabase.init();
@@ -49,10 +51,39 @@ class Transform {
   }
 
   /**
-   * TODO
+   * Returns an object that represents the preview graph.
+   * @returns {GraphPreview} The preview Graph.
    */
-  public getGraphPreview(): void {
+  public async getGraphPreview(): Promise<GraphPreview> {
     this.checkInit();
+
+    const tables = await this.postgresDatabase.getTables();
+
+    let nodeCount = 0;
+
+    const nodes: Record<string, number> = {};
+    const edges: EdgePreview[] = [];
+
+    for (const table of tables) {
+      if (!nodes[table.name]) {
+        nodes[table.name] = nodeCount;
+        nodeCount++;
+      }
+      for (const column of Object.values(table.columns)) {
+        if (column.isForeignKey) {
+          if (!nodes[column.foreignTableName]) {
+            nodes[column.foreignTableName] = nodeCount;
+            nodeCount++;
+          }
+          edges.push({ from: nodes[table.name], to: nodes[column.foreignTableName] });
+        }
+      }
+    }
+
+    return {
+      nodes: Object.keys(nodes).map((label) => ({ id: nodes[label], label })),
+      edges,
+    };
   }
 
   /**
@@ -67,11 +98,15 @@ class Transform {
     this.checkInit();
 
     if (options.createGraph && !options.graphName) {
-      throw new Error('You need to set the graph name in order to create it. Please set the "graphName" property to the graph name.');
+      throw new Error(
+        'You need to set the graph name in order to create it. Please set the "graphName" property to the graph name.'
+      );
     }
 
     if (options.saveTransformFiles && !options.transformFilesPath) {
-      throw new Error('You need to set the file path in order to save transform files. Please set the "transformFilesPath" property to the desired path.');
+      throw new Error(
+        'You need to set the file path in order to save transform files. Please set the "transformFilesPath" property to the desired path.'
+      );
     }
 
     const stream = new Stream();
