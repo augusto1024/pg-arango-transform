@@ -122,7 +122,7 @@ class Transform {
     }
 
     options.createGraph &&
-      (await this.arangoDatabase.createGraph('TestGraph', collections));
+      (await this.arangoDatabase.createGraph(options.graphName, collections));
   }
 }
 
