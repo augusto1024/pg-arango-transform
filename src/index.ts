@@ -3,6 +3,7 @@ import { Config } from 'arangojs/connection';
 import ArangoDatabase from './database/arango-database';
 import PgDatabase from './database/pg-database';
 import Stream from './utils/stream';
+import { EDGE_PREFIX, NODE_FILE_REGEX, EDGE_FILE_REGEX } from './utils/constants';
 
 type MigrateOptions = {
   createGraph?: boolean;
@@ -33,7 +34,8 @@ class Transform {
 
     try {
       await this.postgresDatabase.init();
-    } catch {
+    } catch (e) {
+      console.log(e)
       throw new Error('Failed to connect to Postgres database');
     }
   }
@@ -52,6 +54,7 @@ class Transform {
    * Returns an object that represents the preview graph.
    * @returns {GraphPreview} The preview Graph.
    */
+  // TODO: FIX
   public async getGraphPreview(): Promise<GraphPreview> {
     this.checkInit();
 
@@ -62,21 +65,24 @@ class Transform {
     const nodes: Record<string, number> = {};
     const edges: EdgePreview[] = [];
 
-    for (const table of tables) {
-      if (!nodes[table.name]) {
-        nodes[table.name] = nodeCount;
-        nodeCount++;
-      }
-      for (const column of Object.values(table.columns)) {
-        if (column.isForeignKey) {
-          if (!nodes[column.foreignTableName]) {
-            nodes[column.foreignTableName] = nodeCount;
-            nodeCount++;
-          }
-          edges.push({ from: nodes[table.name], to: nodes[column.foreignTableName] });
-        }
-      }
-    }
+    // for (const table of tables) {
+    //   if (!nodes[table.name]) {
+    //     nodes[table.name] = nodeCount;
+    //     nodeCount++;
+    //   }
+    //   for (const column of Object.values(table.columns)) {
+    //     if (column.isForeignKey) {
+    //       if (!nodes[column.foreignTableName]) {
+    //         nodes[column.foreignTableName] = nodeCount;
+    //         nodeCount++;
+    //       }
+    //       edges.push({
+    //         from: nodes[table.name],
+    //         to: nodes[column.foreignTableName],
+    //       });
+    //     }
+    //   }
+    // }
 
     return {
       nodes: Object.keys(nodes).map((label) => ({ id: nodes[label], label })),
@@ -109,15 +115,32 @@ class Transform {
 
     const collections = [];
 
-    const nodeFiles = await stream.getFileNames();
-    for (const fileName of nodeFiles) {
-      const collection = fileName.match(/^[^-]+/)[0];
-      collection !== 'edges' && collections.push(collection);
+    const files = await stream.getFileNames();
+    const nodeFiles = files.filter(
+      (file) => !file.startsWith(EDGE_PREFIX)
+    );
+    const edgeFiles = files.filter((file) => file.startsWith(EDGE_PREFIX));
 
+    const nodeFileRegExp = new RegExp(NODE_FILE_REGEX);
+    const edgeFileRegExp = new RegExp(EDGE_FILE_REGEX);
+
+    for (const fileName of nodeFiles) {
+      const collection = fileName.match(nodeFileRegExp)[0];
       const file = await stream.getFile(fileName);
 
       await this.arangoDatabase.import(collection, file, {
-        isEdge: collection === 'edges',
+        isEdge: false,
+      });
+
+      collections.push(collection);
+    }
+
+    for (const fileName of edgeFiles) {
+      const collection = fileName.match(edgeFileRegExp)[1];
+      const file = await stream.getFile(fileName);
+
+      await this.arangoDatabase.import('edges', file, {
+        isEdge: true,
       });
     }
 

@@ -32,11 +32,16 @@ class ArangoDatabase {
     nodes: Record<string, unknown>[],
     options?: { isEdge: boolean }
   ): Promise<void> {
+    const collectionExists = await this.connection
+      .collection(collection)
+      .exists();
+
     if (options?.isEdge) {
-      await this.connection.createEdgeCollection(collection);
+      !collectionExists &&
+        (await this.connection.createEdgeCollection(collection));
       await this.connection.collection(collection).import(nodes);
     } else {
-      await this.connection.createCollection(collection);
+      !collectionExists && (await this.connection.createCollection(collection));
       await this.connection.collection(collection).import(nodes);
     }
   }
@@ -46,6 +51,7 @@ class ArangoDatabase {
    * @param name The name of the graph.
    * @param collections The collection names to add to the graph.
    */
+  // TODO: FIX
   public async createGraph(name: string, collections: string[]): Promise<void> {
     await this.connection.createGraph(name, [
       {

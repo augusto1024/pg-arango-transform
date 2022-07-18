@@ -1,15 +1,21 @@
-type TableColumn = {
+type Column = {
   name: string;
-  isPrimaryKey?: boolean;
-  isForeignKey?: boolean;
-  foreignTableName?: string;
-  foreignColumnName?: string;
 };
+
+type ForeignKeyColumn = Column & { referencedColumn: string };
+
+type ForeignKey = {
+  name: string;
+  referencedTable: string;
+  columns: Required<ForeignKeyColumn>[];
+}
 
 type Table = {
   name: string;
   schema: string;
-  columns: Record<string, TableColumn>;
+  regularColumns: Column[];
+  primaryKey: Column[];
+  foreignKeys: ForeignKey[];
 };
 
 type TablesQueryResponse = {
@@ -19,13 +25,6 @@ type TablesQueryResponse = {
 };
 
 type TableRowsResponse = Record<string, unknown>;
-
-type TableKey = {
-  columnName: string;
-  type: 'FOREIGN KEY' | 'PRIMARY KEY';
-  foreignTableName: string;
-  foreignColumnName: string;
-};
 
 type GraphNode = Record<string, unknown> & { _key: string };
 type GraphEdge = Record<string, unknown> & { _from: string; _to: string };
