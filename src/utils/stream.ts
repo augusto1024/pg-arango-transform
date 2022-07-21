@@ -1,20 +1,34 @@
 import fs from 'fs';
 import { v4 as uuid } from 'uuid';
 
+const MAX_FILE_SIZE = 157286400; // 150Mb
+
 class Stream {
   private fileStreams: Record<string, fs.WriteStream>;
+  private fileStreamSizes: Record<string, number>;
 
   constructor() {
     this.fileStreams = {};
+    this.fileStreamSizes = {};
     if (fs.existsSync('./data')) {
       fs.rmSync('./data', { recursive: true });
     }
     fs.mkdirSync('./data');
   }
 
-  private newStream(collection: string): fs.WriteStream {
-    const id = `./data/${collection}-${new Date().valueOf()}-${uuid()}.json`;
-    return fs.createWriteStream(id);
+  private newStream(collection: string): Promise<fs.WriteStream> {
+    collection = collection.replace('-', '_');
+    return new Promise((resolve) => {
+      fs.readdir('./data', (err, files) => {
+        const collectionFiles = files.filter((file) =>
+          file.startsWith(collection)
+        );
+        const id = `./data/${collection}-${
+          collectionFiles.length
+        }-${new Date().valueOf()}-${uuid()}.json`;
+        resolve(fs.createWriteStream(id));
+      });
+    });
   }
 
   private async write(
@@ -22,23 +36,42 @@ class Stream {
     element: string,
     options?: { close?: boolean }
   ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      let addLeadingComma = options?.close ? false : true;
-      if (!this.fileStreams[collection]) {
-        this.fileStreams[collection] = this.newStream(collection);
-        this.fileStreams[collection].write('[');
-        addLeadingComma = false;
-      }
+    return new Promise(async (resolve, reject) => {
+      try {
+        let addLeadingComma = options?.close ? false : true;
 
-      this.fileStreams[collection].write(
-        addLeadingComma ? `,${element}` : element,
-        (err) => {
-          if (err) {
-            return reject(err);
-          }
-          return resolve();
+        if (!options?.close && this.fileStreamSizes[collection] > MAX_FILE_SIZE) {
+          await this.fileStreams[collection].write(']', (err) => {
+            if (err) return Promise.reject(err);
+            Promise.resolve();
+          });
+          this.fileStreams[collection].close();
+          this.fileStreams[collection] = undefined;
+          this.fileStreamSizes[collection] = 0;
         }
-      );
+
+        if (!this.fileStreams[collection]) {
+          this.fileStreams[collection] = await this.newStream(collection);
+          this.fileStreamSizes[collection] = 0;
+          await this.fileStreams[collection].write('[', (err) => {
+            if (err) return Promise.reject(err);
+            Promise.resolve();
+          });
+          addLeadingComma = false;
+        }
+
+        await this.fileStreams[collection].write(
+          addLeadingComma ? `,\n${element}` : `${element}`,
+          (err) => {
+            if (err) return Promise.reject(err);
+            Promise.resolve();
+          }
+        );
+        this.fileStreamSizes[collection] += Buffer.from(element).length;
+        resolve();
+      } catch (err) {
+        reject(err);
+      }
     });
   }
 
