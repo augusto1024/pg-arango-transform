@@ -29,17 +29,26 @@ class ArangoDatabase {
    */
   public async import(
     collection: string,
-    nodes: Record<string, unknown>[],
-    options?: { isEdge: boolean }
+    nodes: GraphEdge[] | GraphNode[],
+    options?: {
+      isEdge: boolean;
+      hasQuery?: boolean;
+      foreignCollection?: string;
+    }
   ): Promise<void> {
     const collectionExists = await this.connection
       .collection(collection)
       .exists();
 
     if (options?.isEdge) {
+      let edges = nodes;
+      if (options?.hasQuery) {
+        edges = await this.getNodeIDs(nodes, options.foreignCollection);
+      }
+
       !collectionExists &&
         (await this.connection.createEdgeCollection(collection));
-      await this.connection.collection(collection).import(nodes);
+      await this.connection.collection(collection).import(edges);
     } else {
       !collectionExists && (await this.connection.createCollection(collection));
       await this.connection.collection(collection).import(nodes);
@@ -48,10 +57,38 @@ class ArangoDatabase {
 
   /**
    *
+   * @param queryEdges The collections of edges that need to search for an id
+   * @param collection The name of the collection where the node belongs
+   */
+  public async getNodeIDs(queryEdges, collection) {
+    const matches = queryEdges.map((edge) => edge._to);
+    const ids = [];
+
+    const query = `FOR node IN ${collection}
+                FILTER MATCHES(
+                node, ${JSON.stringify(matches)}, false)
+                RETURN node._id`;
+    try {
+      const response = await this.connection.query({
+        query,
+        bindVars: {},
+      });
+
+      for await (const id of response) {
+        ids.push(id);
+      }
+    } catch (err) {
+      console.error(err.message);
+    }
+
+    return queryEdges.map((edge, index) => ({ ...edge, _to: ids[index] }));
+  }
+
+  /**
+   *
    * @param name The name of the graph.
    * @param collections The collection names to add to the graph.
    */
-  // TODO: FIX
   public async createGraph(name: string, collections: string[]): Promise<void> {
     await this.connection.createGraph(name, [
       {

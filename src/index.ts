@@ -3,7 +3,12 @@ import { Config } from 'arangojs/connection';
 import ArangoDatabase from './database/arango-database';
 import PgDatabase from './database/pg-database';
 import Stream from './utils/stream';
-import { EDGE_PREFIX, NODE_FILE_REGEX, EDGE_FILE_REGEX } from './utils/constants';
+import {
+  EDGE_PREFIX,
+  EDGE_QUERY_PREFIX,
+  NODE_FILE_REGEX,
+  EDGE_QUERY_FILE_REGEX,
+} from './utils/constants';
 
 type MigrateOptions = {
   createGraph?: boolean;
@@ -35,7 +40,7 @@ class Transform {
     try {
       await this.postgresDatabase.init();
     } catch (e) {
-      console.log(e)
+      console.log(e);
       throw new Error('Failed to connect to Postgres database');
     }
   }
@@ -117,18 +122,22 @@ class Transform {
 
     const files = await stream.getFileNames();
     const nodeFiles = files.filter(
-      (file) => !file.startsWith(EDGE_PREFIX)
+      (file) =>
+        !file.startsWith(EDGE_PREFIX) && !file.startsWith(EDGE_QUERY_PREFIX)
     );
+
     const edgeFiles = files.filter((file) => file.startsWith(EDGE_PREFIX));
+    const edgeQueryFiles = files.filter((file) =>
+      file.startsWith(EDGE_QUERY_PREFIX)
+    );
 
     const nodeFileRegExp = new RegExp(NODE_FILE_REGEX);
-    const edgeFileRegExp = new RegExp(EDGE_FILE_REGEX);
 
     for (const fileName of nodeFiles) {
       const collection = fileName.match(nodeFileRegExp)[0];
       const file = await stream.getFile(fileName);
 
-      await this.arangoDatabase.import(collection, file, {
+      await this.arangoDatabase.import(collection, file as GraphNode[], {
         isEdge: false,
       });
 
@@ -136,11 +145,23 @@ class Transform {
     }
 
     for (const fileName of edgeFiles) {
-      const collection = fileName.match(edgeFileRegExp)[1];
       const file = await stream.getFile(fileName);
 
-      await this.arangoDatabase.import('edges', file, {
+      await this.arangoDatabase.import('edges', file as GraphEdge[], {
         isEdge: true,
+      });
+    }
+
+    const edgeQueryFileRegExp = new RegExp(EDGE_QUERY_FILE_REGEX);
+
+    for (const fileName of edgeQueryFiles) {
+      const foreignCollection = fileName.match(edgeQueryFileRegExp)[1];
+      const file = await stream.getFile(fileName);
+
+      await this.arangoDatabase.import('edges', file as GraphEdge[], {
+        isEdge: true,
+        hasQuery: true,
+        foreignCollection,
       });
     }
 

@@ -1,7 +1,17 @@
 import { Client, ClientConfig } from 'pg';
-import Stream from '../utils/stream';
 import { v4 as uuid } from 'uuid';
-import { EDGE_PREFIX } from '../utils/constants';
+import isEqual from 'lodash/isEqual';
+
+import Stream from '../utils/stream';
+import { EDGE_PREFIX, EDGE_QUERY_PREFIX } from '../utils/constants';
+import {
+  GET_TABLES,
+  GET_PRIMARY_KEYS,
+  GET_FOREIGN_KEY,
+  GET_FOREIGN_KEY_TABLE_INFO,
+  GET_UNIQUE_KEY,
+  GET_FOREIGN_PK,
+} from './queries';
 
 const PAGE_SIZE = 5000;
 export default class PgDatabase {
@@ -53,13 +63,19 @@ export default class PgDatabase {
 
     const foreignKeyColumns = table.foreignKeys
       .map((foreignKey) => foreignKey.columns.map((column) => column.name))
-      .flat();
-    const columnsThatBelongToNode = table.primaryKey
+      .flat(); // name of foreign key columns
+
+    const columnsThatBelongToNode = table.allColumns
       .map((column) => column.name)
-      .filter((column) => !foreignKeyColumns.includes(column))
-      .concat(table.regularColumns.map((column) => column.name));
+      .filter((column) => !foreignKeyColumns.includes(column));
+
+    // If the primary key is composite, the resulting key in the Arango database will be
+    // "tableName/attr1-attr2-...-attrN"
+    const generateNodeKey = (row: Record<string, unknown>): string =>
+      table.primaryKey.map(({ name }) => row[name]).join('-') || uuid();
 
     while (!done) {
+      // Get rows from table
       const { rows } = await this.connection.query<TableRowsResponse>(
         `SELECT * FROM ${table.schema}.${table.name} OFFSET $1 LIMIT $2;`,
         [page * PAGE_SIZE, PAGE_SIZE]
@@ -72,30 +88,45 @@ export default class PgDatabase {
 
       // Go through every row in the query response
       for (const row of rows) {
-        // If the primary key is composite, the resulting key in the Arango database will be
-        // "tableName/attr1-attr2-...-attrN"
         const node = {
-          _key:
-            Object.values(table.primaryKey)
-              .map((column) => row[column.name])
-              .join('-') || uuid(),
+          _key: generateNodeKey(row),
         } as GraphNode;
 
-        // Insert in node all the attributes that don't to a foreign key
+        // Insert in node all the attributes that don't belong to a foreign key
         for (const column of columnsThatBelongToNode) {
           node[column] = row[column];
         }
         await stream.push(table.name, node);
 
-        // Insert in node all the attributes that belong to a foreign key (assuming they are FK to a PK)
+        // Insert in edges all the attributes that belong to a foreign key
         for (const foreignKey of table.foreignKeys) {
-          const edge = {
-            _from: `${table.name}/${node._key}`,
-            _to: `${foreignKey.referencedTable}/${foreignKey.columns
-              .map((column) => row[column.name])
-              .join('-')}`,
-          };
-          await stream.push(`${EDGE_PREFIX}${table.name}`, edge);
+          let prefix;
+          let tableName;
+          let edge;
+
+          if (foreignKey.pointsToPK) {
+            edge = {
+              _from: `${table.name}/${node._key}`,
+              _to: `${foreignKey.foreignTable}/${foreignKey.columns
+                .map((key) => row[key.name])
+                .join('-')}`,
+            };
+            prefix = EDGE_PREFIX;
+            tableName = table.name;
+          } else {
+            const filters = foreignKey.columns.reduce((acc, column) => {
+              return { ...acc, [column.foreignColumn]: row[column.name] };
+            }, {});
+
+            edge = {
+              _from: `${table.name}/${node._key}`,
+              _to: filters,
+            };
+            prefix = EDGE_QUERY_PREFIX;
+            tableName = foreignKey.foreignTable;
+          }
+
+          await stream.push(`${prefix}${tableName}`, edge);
         }
       }
 
@@ -113,11 +144,7 @@ export default class PgDatabase {
 
     // Get all columns from all tables in the database
     const { rows: columns } = await this.connection.query<TablesQueryResponse>(
-      `SELECT
-        table_name AS "tableName",
-        column_name AS "columnName",
-	      table_schema AS "tableSchema"
-      FROM information_schema.columns WHERE table_schema <> 'information_schema' AND  table_schema <> 'pg_catalog';`
+      GET_TABLES
     );
 
     // Generate tables object (containing table name, table schema and unfiltered columns)
@@ -126,41 +153,30 @@ export default class PgDatabase {
         tablesObj[row.tableName] = {
           name: row.tableName,
           schema: row.tableSchema,
-          regularColumns: columns
+          allColumns: columns
             .filter((column) => column.tableName === row.tableName)
-            .map((column) => ({
-              name: column.columnName,
-            })),
+            .map(
+              (column): Column => ({
+                name: column.columnName,
+              })
+            ),
           primaryKey: [],
           foreignKeys: [],
-        };
+        } as Table;
       }
       return tablesObj;
     }, {} as Record<string, Table>);
 
     for (const table of Object.values(tables)) {
-      let [foreignKeys, primaryKeys] = await Promise.all([
+      let [foreignKeys, primaryKeys, uniqueKeys] = await Promise.all([
         this.getForeignKeys(table.name),
         this.getPrimaryKey(table.name),
+        this.getUniqueKeys(table.name),
       ]);
 
       table.foreignKeys = foreignKeys;
       table.primaryKey = primaryKeys;
-
-      const tableKeyColumns = table.primaryKey
-        .map((column) => column.name)
-        .concat(
-          table.foreignKeys
-            .map((foreignKey) =>
-              foreignKey.columns.map((column) => column.name)
-            )
-            .flat()
-        );
-
-      // Remove from table object all the columns that belong to a primary or foreign key
-      table.regularColumns = table.regularColumns.filter(
-        (column) => !tableKeyColumns.includes(column.name)
-      );
+      table.uniqueKeys = uniqueKeys;
     }
 
     return Object.values(tables);
@@ -172,14 +188,7 @@ export default class PgDatabase {
    */
   private async getPrimaryKey(tableName: string): Promise<Column[]> {
     const { rows: columns } = await this.connection.query<Column>(
-      `SELECT
-        ccu.column_name AS "name"
-      FROM
-        information_schema.table_constraints AS tc
-      JOIN information_schema.constraint_column_usage AS ccu
-        ON ccu.constraint_name = tc.constraint_name
-        AND ccu.table_schema = tc.table_schema
-      WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name=$1;`,
+      GET_PRIMARY_KEYS,
       [tableName]
     );
     return columns;
@@ -193,17 +202,7 @@ export default class PgDatabase {
     const { rows: foreignKeyColumns } = await this.connection.query<{
       columnName: string;
       constraintName: string;
-    }>(
-      `SELECT
-        kcu.column_name AS "columnName",
-        tc.constraint_name AS "constraintName"
-      FROM
-        information_schema.table_constraints tc
-        JOIN information_schema.key_column_usage kcu
-        ON kcu.constraint_name = tc.constraint_name
-      WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_name = $1;`,
-      [tableName]
-    );
+    }>(GET_FOREIGN_KEY, [tableName]);
 
     if (!foreignKeyColumns.length) return [];
 
@@ -214,46 +213,89 @@ export default class PgDatabase {
       return constraintNames;
     }, []);
 
-    const { rows: constraintColumns } = await this.connection.query<{
+    // Get full foreign key information
+    const { rows: foreignKeys } = await this.connection.query<{
+      columnName: string;
       constraintName: string;
       foreignColumnName: string;
       foreignTableName: string;
-    }>(
-      `SELECT
-        ccu.constraint_name as "constraintName",
-        ccu.column_name as "foreignColumnName",
-        ccu.table_name as "foreignTableName"
-      FROM information_schema.constraint_column_usage ccu
-      WHERE ccu.constraint_name = ANY($1)`,
-      [constraints]
-    );
+    }>(GET_FOREIGN_KEY_TABLE_INFO, [constraints]);
 
-    const foreignKeys = foreignKeyColumns.map((foreignKeyColumn, index) => ({
-      ...foreignKeyColumn,
-      ...constraintColumns[index],
-    }));
+    const foreignTableNames = foreignKeys.map((key) => key.foreignTableName);
+    const { rows: foreignTablePrimaryKey } = await this.connection.query<{
+      primaryKey: string;
+      tableName: string;
+    }>(GET_FOREIGN_PK, [foreignTableNames]);
 
-    return Object.values(
+    const keys = Object.values(
       foreignKeys.reduce((keys, key) => {
         if (keys[key.foreignTableName]) {
           keys[key.foreignTableName].columns.push({
             name: key.columnName,
-            referencedColumn: key.foreignColumnName,
+            foreignColumn: key.foreignColumnName,
           });
         } else {
           keys[key.foreignTableName] = {
             name: key.constraintName,
-            referencedTable: key.foreignTableName,
+            foreignTable: key.foreignTableName,
+            pointsToPK: undefined,
             columns: [
               {
                 name: key.columnName,
-                referencedColumn: key.foreignColumnName,
+                foreignColumn: key.foreignColumnName,
               },
             ],
           };
         }
         return keys;
       }, {} as Record<string, ForeignKey>)
+    );
+
+    // "pointsToPK" attribute on the FK
+    const FKs = keys.map((key) => {
+      const primaryKeys = foreignTablePrimaryKey
+        .filter((pk) => pk.tableName === key.foreignTable)
+        .map(({ primaryKey }) => primaryKey);
+
+      const foreignKeyColumns = key.columns.map(({ name }) => name);
+
+      const pointsToPK = isEqual(primaryKeys, foreignKeyColumns);
+      return { ...key, pointsToPK };
+    });
+
+    return FKs;
+  }
+
+  /**
+   * @param tableName The name of the table from where to get the unique keys
+   * @returns The unique keys of the table
+   */
+  private async getUniqueKeys(tableName: string): Promise<UniqueKey[]> {
+    const { rows: uniqueKeyColumns } = await this.connection.query<{
+      columnName: string;
+      constraintName: string;
+    }>(GET_UNIQUE_KEY, [tableName]);
+
+    if (!uniqueKeyColumns.length) return [];
+
+    return Object.values(
+      uniqueKeyColumns.reduce((keys, key) => {
+        if (keys[key.constraintName]) {
+          keys[key.constraintName].columns.push({
+            name: key.columnName,
+          });
+        } else {
+          keys[key.constraintName] = {
+            name: key.constraintName,
+            columns: [
+              {
+                name: key.columnName,
+              },
+            ],
+          };
+        }
+        return keys;
+      }, {} as Record<string, UniqueKey>)
     );
   }
 }
