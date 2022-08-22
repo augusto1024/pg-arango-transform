@@ -2,19 +2,26 @@ type Column = {
   name: string;
 };
 
-type ForeignKeyColumn = Column & { referencedColumn: string };
+type ForeignKeyColumn = Column & { foreignColumn: string };
 
 type ForeignKey = {
   name: string;
-  referencedTable: string;
+  foreignTable: string;
   columns: Required<ForeignKeyColumn>[];
-}
+  pointsToPK: boolean;
+};
+
+type UniqueKey = {
+  name: string;
+  columns: Column[];
+};
 
 type Table = {
   name: string;
   schema: string;
-  regularColumns: Column[];
+  allColumns: Column[];
   primaryKey: Column[];
+  uniqueKeys: UniqueKey[];
   foreignKeys: ForeignKey[];
 };
 
@@ -35,4 +42,4 @@ type EdgePreview = { from: number; to: number };
 type GraphPreview = {
   nodes: NodePreview[];
   edges: EdgePreview[];
-}
+};
