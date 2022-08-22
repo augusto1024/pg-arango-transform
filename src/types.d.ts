@@ -43,3 +43,8 @@ type GraphPreview = {
   nodes: NodePreview[];
   edges: EdgePreview[];
 };
+
+type TransformMessage = {
+  message: string;
+  type?: 'info' | 'error' | 'done'
+}

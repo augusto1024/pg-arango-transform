@@ -12,14 +12,19 @@ import {
   GET_UNIQUE_KEY,
   GET_FOREIGN_PK,
 } from './queries';
+import { MigrationDatabase } from './database';
 
 const PAGE_SIZE = 5000;
-export default class PgDatabase {
+export default class PgDatabase extends MigrationDatabase {
   private config: ClientConfig;
   private connection: Client;
   private tables: Table[];
 
-  constructor(config: ClientConfig) {
+  constructor(
+    config: ClientConfig,
+    notify?: (message: TransformMessage) => void
+  ) {
+    super(notify);
     this.config = config;
   }
 
@@ -29,8 +34,32 @@ export default class PgDatabase {
    */
   public async init(): Promise<void> {
     this.connection = new Client(this.config);
-    await this.connection.connect();
-    this.tables = await this.getTables();
+    try {
+      this.notify({ message: 'Connecting to Postgres database', type: 'info' });
+      await this.connection.connect();
+    } catch (err) {
+      this.notify({
+        message: 'Failed to connect to Postgres database',
+        type: 'error',
+      });
+      throw err;
+    }
+
+    try {
+      this.notify({ message: 'Fetching schema information' });
+      this.tables = await this.getTables();
+      this.notify({ message: `${this.tables.length} tables found` });
+    } catch (err) {
+      this.notify({
+        message: 'Failed to fetch schema information',
+        type: 'error',
+      });
+      throw err;
+    }
+
+    this.notify({
+      message: 'Successfully connected to Postgres database',
+    });
   }
 
   /**
@@ -44,9 +73,36 @@ export default class PgDatabase {
       );
     }
 
+    let convertedTables = 0;
+
+    this.notify({ message: 'Exporting tables to files', type: 'info' });
+    this.notify({
+      message: `${convertedTables} of ${this.tables.length} tables saved`,
+    });
+
     await Promise.all(
-      this.tables.map((table) => this.exportTable(table, stream))
-    );
+      this.tables.map((table) =>
+        this.exportTable(table, stream)
+          .then(() => {
+            convertedTables = convertedTables + 1;
+            this.notify({
+              message: `${convertedTables} of ${this.tables.length} tables saved`,
+            });
+          })
+          .catch((err) => {
+            this.notify({
+              message: `Failed to export table "${table.name}"`,
+              type: 'error',
+            });
+            throw err;
+          })
+      )
+    ).then(async () => await stream.close());
+
+    this.notify({
+      message: `Tables exported successfully`,
+      type: 'done',
+    });
   }
 
   /**

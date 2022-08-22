@@ -3,12 +3,6 @@ import { Config } from 'arangojs/connection';
 import ArangoDatabase from './database/arango-database';
 import PgDatabase from './database/pg-database';
 import Stream from './utils/stream';
-import {
-  EDGE_PREFIX,
-  EDGE_QUERY_PREFIX,
-  NODE_FILE_REGEX,
-  EDGE_QUERY_FILE_REGEX,
-} from './utils/constants';
 
 type MigrateOptions = {
   createGraph?: boolean;
@@ -18,6 +12,11 @@ type MigrateOptions = {
 class Transform {
   private arangoDatabase: ArangoDatabase;
   private postgresDatabase: PgDatabase;
+  private notify: (message: TransformMessage) => void;
+
+  constructor(notify?: (message: TransformMessage) => void) {
+    this.notify = notify ? notify : (message: TransformMessage) => undefined;
+  }
 
   /**
    * Establishes the connection to the Postgres database and the Arango database.
@@ -28,8 +27,8 @@ class Transform {
     postgresConfig: ClientConfig,
     arangoConfig: Config
   ): Promise<void> {
-    this.arangoDatabase = new ArangoDatabase(arangoConfig);
-    this.postgresDatabase = new PgDatabase(postgresConfig);
+    this.arangoDatabase = new ArangoDatabase(arangoConfig, this.notify);
+    this.postgresDatabase = new PgDatabase(postgresConfig, this.notify);
 
     try {
       await this.arangoDatabase.init();
@@ -40,17 +39,29 @@ class Transform {
     try {
       await this.postgresDatabase.init();
     } catch (e) {
-      console.log(e);
       throw new Error('Failed to connect to Postgres database');
     }
+
+    this.notify({
+      message: 'Succesfully connected to Arango and Postgres Databases',
+      type: 'done',
+    });
   }
 
   private checkInit(): void {
     const message = (database: string) =>
       `No ${database} database was found. Maybe forgot to run "Transformer.init()"?`;
     if (!this.arangoDatabase) {
+      this.notify({
+        message: message('Arango'),
+        type: 'error',
+      });
       throw new Error(message('Arango'));
     } else if (!this.postgresDatabase) {
+      this.notify({
+        message: message('Arango'),
+        type: 'error',
+      });
       throw new Error(message('Postgres'));
     }
   }
@@ -116,57 +127,10 @@ class Transform {
 
     await this.postgresDatabase.export(stream);
 
-    await stream.close();
-
-    const collections = [];
-
-    const files = await stream.getFileNames();
-    const nodeFiles = files.filter(
-      (file) =>
-        !file.startsWith(EDGE_PREFIX) && !file.startsWith(EDGE_QUERY_PREFIX)
-    );
-
-    const edgeFiles = files.filter((file) => file.startsWith(EDGE_PREFIX));
-    const edgeQueryFiles = files.filter((file) =>
-      file.startsWith(EDGE_QUERY_PREFIX)
-    );
-
-    const nodeFileRegExp = new RegExp(NODE_FILE_REGEX);
-
-    for (const fileName of nodeFiles) {
-      const collection = fileName.match(nodeFileRegExp)[0];
-      const file = await stream.getFile(fileName);
-
-      await this.arangoDatabase.import(collection, file as GraphNode[], {
-        isEdge: false,
-      });
-
-      collections.push(collection);
-    }
-
-    for (const fileName of edgeFiles) {
-      const file = await stream.getFile(fileName);
-
-      await this.arangoDatabase.import('edges', file as GraphEdge[], {
-        isEdge: true,
-      });
-    }
-
-    const edgeQueryFileRegExp = new RegExp(EDGE_QUERY_FILE_REGEX);
-
-    for (const fileName of edgeQueryFiles) {
-      const foreignCollection = fileName.match(edgeQueryFileRegExp)[1];
-      const file = await stream.getFile(fileName);
-
-      await this.arangoDatabase.import('edges', file as GraphEdge[], {
-        isEdge: true,
-        hasQuery: true,
-        foreignCollection,
-      });
-    }
+    await this.arangoDatabase.importFromStream(stream);
 
     options.createGraph &&
-      (await this.arangoDatabase.createGraph(options.graphName, collections));
+      (await this.arangoDatabase.createGraph(options.graphName));
   }
 }
 
