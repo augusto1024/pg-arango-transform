@@ -30,7 +30,7 @@ class ArangoDatabase extends MigrationDatabase {
 
       if (!exists) {
         this.notify({
-          message: 'Failed to connect to Arango database',
+          message: `ArangoDB database "${this.config.databaseName}" doesn't exist`,
           type: 'error',
         });
         throw new Error("The database doesn't exist");
@@ -105,6 +105,7 @@ class ArangoDatabase extends MigrationDatabase {
           message: 'Failed to import edges',
           type: 'error',
         });
+        throw err;
       }
     }
 
@@ -125,6 +126,7 @@ class ArangoDatabase extends MigrationDatabase {
           message: 'Failed to import edges',
           type: 'error',
         });
+        throw err;
       }
     }
 
