@@ -4,7 +4,7 @@ import ArangoDatabase from './database/arango-database';
 import PgDatabase from './database/pg-database';
 import Stream from './utils/stream';
 
-type MigrateOptions = {
+export type MigrateOptions = {
   createGraph?: boolean;
   graphName?: string;
 };

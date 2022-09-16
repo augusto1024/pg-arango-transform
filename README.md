@@ -6,6 +6,18 @@
 - Run `npm install`
 - Run `npm run start`
 
+### Eject migration
+
+- Be sure to have Arango & Postgres credentials on `.env` file
+- Run `npm run migrate`
+
+### Run checks
+
+- Run `npm run checks`
+
+1. Check number of collections equal to number of tables
+2. Check number of table nows equal number of collection nodes
+
 ### If you want to run ArangoDB with Docker
 
 - Install Docker
