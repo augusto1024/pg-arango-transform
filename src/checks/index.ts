@@ -1,63 +1,67 @@
-import { setPostgressConnection, setArangoConnection } from './migrate';
-
 import {
   getDatabasesConfig,
   getTotalCollections,
   getAllTables,
   getTableRows,
   getTotalNodes,
+  setPostgressConnection,
+  setArangoConnection,
 } from './utils';
 
 import { colors, log } from './logs';
 
 const { postgresConfig, arangoConfig } = getDatabasesConfig();
 
-const sanityChecks = async () => {
-  const postgresConnection = await setPostgressConnection(postgresConfig);
-  const arangoConnection = await setArangoConnection(arangoConfig);
+(async function () {
+  try {
+    const postgresConnection = await setPostgressConnection(postgresConfig);
+    const arangoConnection = await setArangoConnection(arangoConfig);
 
-  const tables = await getAllTables(postgresConnection);
+    const tables = await getAllTables(postgresConnection);
 
-  // check number of collections equal to number of tables
+    // check number of collections equal to number of tables
 
-  log(
-    colors.yellow,
-    '1. Running check: number of collections equal to number of tables'
-  );
-  const totalCollections = await getTotalCollections(arangoConnection);
+    log(
+      colors.yellow,
+      '1. Running check: number of collections equal to number of tables'
+    );
+    const totalCollections = await getTotalCollections(arangoConnection);
 
-  if (tables.length !== totalCollections) {
-    log(colors.red, 'Check fail. Results:');
-    log('Total collections:', totalCollections);
-    log('Total tables:', tables.length);
-  } else {
-    log(colors.green, 'Sanity check pass');
-  }
+    if (tables.length !== totalCollections) {
+      log(colors.red, 'Check fail. Results:');
+    } else {
+      log(colors.green, 'Sanity check passed');
+    }
 
-  // check number of table nows equal number of collection nodes
-  log(
-    colors.yellow,
-    '2. Running check: number of table rows equal number of collection nodes'
-  );
-  let errors = false;
+    // check number of table nows equal number of collection nodes
+    log(
+      colors.yellow,
+      '2. Running check: number of table rows equal number of collection nodes'
+    );
 
-  tables.forEach(async ({ name, schema }) => {
-    const tableRows = await getTableRows(postgresConnection, schema, name);
-    const totalNodes = await getTotalNodes(arangoConnection, name);
+    const differences = [];
+    for (let { name, schema } of tables) {
+      const tableRows = await getTableRows(postgresConnection, schema, name);
+      const totalNodes = await getTotalNodes(arangoConnection, name);
 
-    if (tableRows !== totalNodes) {
-      errors = true;
+      if (tableRows !== totalNodes) {
+        differences.push(`${schema}.${name}`);
+      }
+    }
+
+    if (differences.length) {
       log(
         colors.red,
-        `Nodes and table rows for collection ${schema}.${name} don't match.`
+        `Node and row count don't match for the following tables/collections:`
       );
+      differences.forEach((name) => log(name, name));
     } else {
-      log(
-        colors.green,
-        `Nodes and table rows for collection ${schema}.${name} match.`
-      );
+      log(colors.green, 'Sanity check passed');
     }
-  });
-};
 
-sanityChecks();
+    process.exit(0);
+  } catch (error) {
+    console.error(error);
+    process.exit(-1);
+  }
+})();

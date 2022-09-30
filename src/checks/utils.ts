@@ -1,3 +1,7 @@
+import { ClientConfig, Client } from 'pg';
+import { Config } from 'arangojs/connection';
+import { CollectionType, Database } from 'arangojs';
+
 export const getDatabasesConfig = () => {
   const postgresConfig = {
     host: process.env.PG_HOST,
@@ -19,29 +23,15 @@ export const getDatabasesConfig = () => {
   return { postgresConfig, arangoConfig };
 };
 
-export const getTotalCollections = async (connection) => {
-  const defaultArangoCollections = 9;
-  const edgeCollection = 1;
+export const getTotalCollections = async (connection: Database) => {
+  const collections = (await connection.listCollections()).filter(
+    (collection) => collection.type !== CollectionType.EDGE_COLLECTION
+  );
 
-  const totalCollections = [];
-  const query = `RETURN LENGTH(COLLECTIONS())`;
-  try {
-    const response = await connection.query({
-      query,
-      bindVars: {},
-    });
-
-    for await (const id of response) {
-      totalCollections.push(id);
-    }
-  } catch (err) {
-    console.error(err.message);
-  }
-
-  return totalCollections[0] - defaultArangoCollections - edgeCollection;
+  return collections.length;
 };
 
-export const getAllTables = async (connection) => {
+export const getAllTables = async (connection: Client) => {
   const { rows: tables } = await connection.query(
     `SELECT table_name as name, table_schema as schema, table_type as table_type 
       FROM information_schema.tables 
@@ -52,7 +42,11 @@ export const getAllTables = async (connection) => {
   return tables;
 };
 
-export const getTableRows = async (connection, tableSchema, tableName) => {
+export const getTableRows = async (
+  connection: Client,
+  tableSchema: string,
+  tableName: string
+) => {
   const { rows: totalRows } = await connection.query(
     `SELECT count(*) FROM ${tableSchema}.${tableName}`
   );
@@ -60,7 +54,10 @@ export const getTableRows = async (connection, tableSchema, tableName) => {
   return Number(totalRows[0].count);
 };
 
-export const getTotalNodes = async (connection, collection) => {
+export const getTotalNodes = async (
+  connection: Database,
+  collection: string
+) => {
   const totalNodes = [];
   const query = `RETURN LENGTH(${collection})`;
   try {
@@ -77,4 +74,21 @@ export const getTotalNodes = async (connection, collection) => {
   }
 
   return totalNodes[0];
+};
+
+export const setPostgressConnection = async (postgresConfig: ClientConfig) => {
+  const connection = new Client(postgresConfig);
+  await connection.connect();
+
+  return connection;
+};
+
+export const setArangoConnection = async (arangoConfig: Config) => {
+  const connection = new Database(arangoConfig);
+  const exists = await connection.exists();
+  if (!exists) {
+    throw new Error("ArangoDB database doesn't exist");
+  }
+
+  return connection;
 };

@@ -19,7 +19,8 @@ pg.types.setTypeParser(1082, (stringValue) => stringValue); //1082 for date type
 
 const PAGE_SIZE = 5000;
 
-const noWhitespace = (str) => str.replace(/\s/g, '');
+const removeForbiddenCharacters = (str) =>
+  str.replace(/[^A-Za-z0-9_\-:.@()+,=;$!*'%]/g, '');
 export default class PgDatabase extends MigrationDatabase {
   private config: ClientConfig;
   private connection: Client;
@@ -133,7 +134,7 @@ export default class PgDatabase extends MigrationDatabase {
     // If the primary key is composite, the resulting key in the Arango database will be
     // "tableName/attr1-attr2-...-attrN"
     const generateNodeKey = (row: Record<string, unknown>): string =>
-      noWhitespace(
+      removeForbiddenCharacters(
         table.primaryKey.map(({ name }) => row[name]?.toString()).join('-')
       ) || uuid();
 
@@ -170,7 +171,7 @@ export default class PgDatabase extends MigrationDatabase {
           if (foreignKey.pointsToPK) {
             edge = {
               _from: `${table.name}/${node._key}`,
-              _to: noWhitespace(
+              _to: removeForbiddenCharacters(
                 `${foreignKey.foreignTable}/${foreignKey.columns
                   .map((key) => row[key.name]?.toString())
                   .join('-')}`
