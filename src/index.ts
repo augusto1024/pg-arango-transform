@@ -127,6 +127,22 @@ class Transform {
 
     await this.postgresDatabase.export(stream);
 
+    const tables = await this.postgresDatabase.getTables();
+    for (const table of tables) {
+      for (const uniqueKey of table.uniqueKeys) {
+        this.notify({
+          message: `Creating index for ${uniqueKey.name}`,
+          type: 'info',
+        });
+        await this.arangoDatabase.createIndex({
+          collection: table.name,
+          fields: uniqueKey.columns.map((attr) => attr.name),
+          name: uniqueKey.name,
+          unique: true,
+        });
+      }
+    }
+
     await this.arangoDatabase.importFromStream(stream);
 
     options.createGraph &&
