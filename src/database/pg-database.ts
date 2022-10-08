@@ -1,6 +1,6 @@
 import pg, { Client, ClientConfig } from 'pg';
 import { v4 as uuid } from 'uuid';
-import isEqual from 'lodash/isEqual';
+import { difference } from 'lodash';
 
 import Stream from '../utils/stream';
 import { EDGE_PREFIX, EDGE_QUERY_PREFIX } from '../utils/constants';
@@ -171,11 +171,11 @@ export default class PgDatabase extends MigrationDatabase {
           if (foreignKey.pointsToPK) {
             edge = {
               _from: `${table.name}/${node._key}`,
-              _to: removeForbiddenCharacters(
-                `${foreignKey.foreignTable}/${foreignKey.columns
+              _to: `${foreignKey.foreignTable}/${removeForbiddenCharacters(
+                foreignKey.columns
                   .map((key) => row[key.name]?.toString())
-                  .join('-')}`
-              ),
+                  .join('-')
+              )}`,
             };
             prefix = EDGE_PREFIX;
             tableName = table.name;
@@ -323,9 +323,13 @@ export default class PgDatabase extends MigrationDatabase {
         .filter((pk) => pk.tableName === key.foreignTable)
         .map(({ primaryKey }) => primaryKey);
 
-      const foreignKeyColumns = key.columns.map(({ name }) => name);
+      const foreignKeyColumns = key.columns.map(
+        ({ foreignColumn }) => foreignColumn
+      );
 
-      const pointsToPK = isEqual(primaryKeys, foreignKeyColumns);
+      const pointsToPK =
+        difference([...new Set(primaryKeys)], [...new Set(foreignKeyColumns)])
+          .length === 0;
       return { ...key, pointsToPK };
     });
 
