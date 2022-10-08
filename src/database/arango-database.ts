@@ -172,28 +172,63 @@ class ArangoDatabase extends MigrationDatabase {
 
   /**
    *
+   * @param collection The name of the collection where the index is going to be created
+   * @param fields The fields that belong to the index
+   */
+  public async createIndex(options: {
+    collection: string;
+    fields: string[];
+    name: string;
+    unique?: boolean;
+  }): Promise<unknown> {
+    const { collection, fields, name, unique } = options;
+
+    const collectionExists = await this.connection
+      .collection(collection)
+      .exists();
+
+    !collectionExists && (await this.connection.createCollection(collection));
+
+    return this.connection.collection(collection).ensureIndex({
+      type: 'persistent',
+      fields,
+      name,
+      unique,
+    });
+  }
+
+  /**
+   *
    * @param queryEdges The collections of edges that need to search for an id
    * @param collection The name of the collection where the node belongs
    */
   public async getNodeIDs(queryEdges, collection) {
     const matches = queryEdges.map((edge) => edge._to);
     const ids = [];
+    let offset = 0;
+    const limit = 1000;
 
-    const query = `FOR node IN ${collection}
-                FILTER MATCHES(
-                node, ${JSON.stringify(matches)}, false)
-                RETURN node._id`;
-    try {
-      const response = await this.connection.query({
-        query,
-        bindVars: {},
-      });
+    while (offset < matches.length) {
+      const query = `FOR node IN ${collection}
+        FILTER MATCHES(
+        node, ${JSON.stringify(matches.slice(offset, offset + limit))}, false)
+        RETURN node._id`;
 
-      for await (const id of response) {
-        ids.push(id);
+      try {
+        const response = await this.connection.query({
+          query,
+          bindVars: {},
+        });
+
+        for await (const id of response) {
+          ids.push(id);
+        }
+      } catch (err) {
+        console.error(err.message);
+        throw err;
       }
-    } catch (err) {
-      console.error(err.message);
+
+      offset = offset + limit;
     }
 
     return queryEdges.map((edge, index) => ({ ...edge, _to: ids[index] }));

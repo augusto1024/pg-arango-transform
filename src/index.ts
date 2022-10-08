@@ -4,7 +4,7 @@ import ArangoDatabase from './database/arango-database';
 import PgDatabase from './database/pg-database';
 import Stream from './utils/stream';
 
-type MigrateOptions = {
+export type MigrateOptions = {
   createGraph?: boolean;
   graphName?: string;
 };
@@ -126,6 +126,22 @@ class Transform {
     const stream = new Stream();
 
     await this.postgresDatabase.export(stream);
+
+    const tables = await this.postgresDatabase.getTables();
+    for (const table of tables) {
+      for (const uniqueKey of table.uniqueKeys) {
+        this.notify({
+          message: `Creating index for ${uniqueKey.name}`,
+          type: 'info',
+        });
+        await this.arangoDatabase.createIndex({
+          collection: table.name,
+          fields: uniqueKey.columns.map((attr) => attr.name),
+          name: uniqueKey.name,
+          unique: true,
+        });
+      }
+    }
 
     await this.arangoDatabase.importFromStream(stream);
 

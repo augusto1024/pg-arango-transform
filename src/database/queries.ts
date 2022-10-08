@@ -1,8 +1,16 @@
+/**
+ * Ignore VIEWS -> it.table_type = 'BASE TABLE
+ * Ignore tables on information_schema and pg_catalog
+ */
 export const GET_TABLES = `SELECT
-        table_name AS "tableName",
-        column_name AS "columnName",
-	      table_schema AS "tableSchema"
-      FROM information_schema.columns WHERE table_schema <> 'information_schema' AND  table_schema <> 'pg_catalog';`;
+		ic.table_name AS "tableName",
+		ic.column_name AS "columnName",
+     ic.table_schema AS "tableSchema"
+      FROM information_schema.columns as ic join information_schema.tables as it  on 
+	  ic.table_name = it.table_name and ic.table_schema = it.table_schema 
+	  WHERE ic.table_schema <> 'information_schema' 
+	  AND  ic.table_schema <> 'pg_catalog'
+	  AND it.table_type = 'BASE TABLE'`;
 
 export const GET_PRIMARY_KEYS = `SELECT
         ccu.column_name AS "name"

@@ -1,6 +1,6 @@
-import { Client, ClientConfig } from 'pg';
+import pg, { Client, ClientConfig } from 'pg';
 import { v4 as uuid } from 'uuid';
-import isEqual from 'lodash/isEqual';
+import { difference } from 'lodash';
 
 import Stream from '../utils/stream';
 import { EDGE_PREFIX, EDGE_QUERY_PREFIX } from '../utils/constants';
@@ -14,7 +14,13 @@ import {
 } from './queries';
 import { MigrationDatabase } from './database';
 
+pg.types.setTypeParser(1114, (stringValue) => stringValue); //1114 for time without timezone type;
+pg.types.setTypeParser(1082, (stringValue) => stringValue); //1082 for date type
+
 const PAGE_SIZE = 5000;
+
+const removeForbiddenCharacters = (str) =>
+  str.replace(/[^A-Za-z0-9_\-:.@()+,=;$!*'%]/g, '');
 export default class PgDatabase extends MigrationDatabase {
   private config: ClientConfig;
   private connection: Client;
@@ -128,7 +134,9 @@ export default class PgDatabase extends MigrationDatabase {
     // If the primary key is composite, the resulting key in the Arango database will be
     // "tableName/attr1-attr2-...-attrN"
     const generateNodeKey = (row: Record<string, unknown>): string =>
-      table.primaryKey.map(({ name }) => row[name]).join('-') || uuid();
+      removeForbiddenCharacters(
+        table.primaryKey.map(({ name }) => row[name]?.toString()).join('-')
+      ) || uuid();
 
     while (!done) {
       // Get rows from table
@@ -163,9 +171,11 @@ export default class PgDatabase extends MigrationDatabase {
           if (foreignKey.pointsToPK) {
             edge = {
               _from: `${table.name}/${node._key}`,
-              _to: `${foreignKey.foreignTable}/${foreignKey.columns
-                .map((key) => row[key.name])
-                .join('-')}`,
+              _to: `${foreignKey.foreignTable}/${removeForbiddenCharacters(
+                foreignKey.columns
+                  .map((key) => row[key.name]?.toString())
+                  .join('-')
+              )}`,
             };
             prefix = EDGE_PREFIX;
             tableName = table.name;
@@ -313,9 +323,13 @@ export default class PgDatabase extends MigrationDatabase {
         .filter((pk) => pk.tableName === key.foreignTable)
         .map(({ primaryKey }) => primaryKey);
 
-      const foreignKeyColumns = key.columns.map(({ name }) => name);
+      const foreignKeyColumns = key.columns.map(
+        ({ foreignColumn }) => foreignColumn
+      );
 
-      const pointsToPK = isEqual(primaryKeys, foreignKeyColumns);
+      const pointsToPK =
+        difference([...new Set(primaryKeys)], [...new Set(foreignKeyColumns)])
+          .length === 0;
       return { ...key, pointsToPK };
     });
 
