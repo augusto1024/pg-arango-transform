@@ -17,7 +17,7 @@ import { MigrationDatabase } from './database';
 pg.types.setTypeParser(1114, (stringValue) => stringValue); //1114 for time without timezone type;
 pg.types.setTypeParser(1082, (stringValue) => stringValue); //1082 for date type
 
-const PAGE_SIZE = 5000;
+const QUERY_RESULT_SIZE = 50000;
 
 const removeForbiddenCharacters = (str) =>
   str.replace(/[^A-Za-z0-9_\-:.@()+,=;$!*'%]/g, '');
@@ -86,6 +86,8 @@ export default class PgDatabase extends MigrationDatabase {
       message: `${convertedTables} of ${this.tables.length} tables saved`,
     });
 
+    await this.connection.query('BEGIN;');
+
     await Promise.all(
       this.tables.map((table) =>
         this.exportTable(table, stream)
@@ -105,6 +107,8 @@ export default class PgDatabase extends MigrationDatabase {
       )
     ).then(async () => await stream.close());
 
+    await this.connection.query('COMMIT;');
+
     this.notify({
       message: `Tables exported successfully`,
       type: 'done',
@@ -121,7 +125,6 @@ export default class PgDatabase extends MigrationDatabase {
    */
   private async exportTable(table: Table, stream: Stream) {
     let done = false;
-    let page = 0;
 
     const foreignKeyColumns = table.foreignKeys
       .map((foreignKey) => foreignKey.columns.map((column) => column.name))
@@ -138,11 +141,16 @@ export default class PgDatabase extends MigrationDatabase {
         table.primaryKey.map(({ name }) => row[name]?.toString()).join('-')
       ) || uuid();
 
+    const cursorName = `${table.name}_cursor`;
+
+    await this.connection.query(`
+      DECLARE ${cursorName} CURSOR FOR SELECT * FROM ${table.name};
+    `);
+
     while (!done) {
       // Get rows from table
       const { rows } = await this.connection.query<TableRowsResponse>(
-        `SELECT * FROM ${table.schema}.${table.name} OFFSET $1 LIMIT $2;`,
-        [page * PAGE_SIZE, PAGE_SIZE]
+        `FETCH ${QUERY_RESULT_SIZE} FROM ${cursorName};`
       );
 
       if (!rows.length) {
@@ -195,8 +203,6 @@ export default class PgDatabase extends MigrationDatabase {
           await stream.push(`${prefix}${tableName}`, edge);
         }
       }
-
-      page += 1;
     }
   }
 

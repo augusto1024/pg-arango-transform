@@ -8,6 +8,7 @@ import {
   NODE_FILE_REGEX,
   EDGE_QUERY_FILE_REGEX,
 } from '../utils/constants';
+import { CollectionImportResult } from 'arangojs/collection';
 
 class ArangoDatabase extends MigrationDatabase {
   private config: Config;
@@ -69,14 +70,18 @@ class ArangoDatabase extends MigrationDatabase {
       type: 'info',
     });
 
+    let errorCount = 0;
+
     for (const fileName of nodeFiles) {
       const collection = fileName.match(nodeFileRegExp)[0];
       try {
         const file = await stream.getFile(fileName);
 
-        await this.import(collection, file as GraphNode[], {
+        const result = await this.import(collection, file as GraphNode[], {
           isEdge: false,
         });
+
+        errorCount += result.errors;
 
         collections.push(collection);
       } catch (err) {
@@ -88,6 +93,13 @@ class ArangoDatabase extends MigrationDatabase {
       }
     }
 
+    if (errorCount > 0) {
+      this.notify({
+        message: `${errorCount} nodes were not able to be imported.`,
+      });
+      errorCount = 0;
+    }
+
     this.notify({
       message: 'Importing edges into Arango database',
       type: 'info',
@@ -97,9 +109,11 @@ class ArangoDatabase extends MigrationDatabase {
       try {
         const file = await stream.getFile(fileName);
 
-        await this.import('edges', file as GraphEdge[], {
+        const result = await this.import('edges', file as GraphEdge[], {
           isEdge: true,
         });
+
+        errorCount += result.errors;
       } catch (err) {
         this.notify({
           message: 'Failed to import edges',
@@ -109,6 +123,13 @@ class ArangoDatabase extends MigrationDatabase {
       }
     }
 
+    if (errorCount > 0) {
+      this.notify({
+        message: `${errorCount} edges were not able to be imported.`,
+      });
+      errorCount = 0;
+    }
+
     const edgeQueryFileRegExp = new RegExp(EDGE_QUERY_FILE_REGEX);
 
     for (const fileName of edgeQueryFiles) {
@@ -116,11 +137,13 @@ class ArangoDatabase extends MigrationDatabase {
         const foreignCollection = fileName.match(edgeQueryFileRegExp)[1];
         const file = await stream.getFile(fileName);
 
-        await this.import('edges', file as GraphEdge[], {
+        const result = await this.import('edges', file as GraphEdge[], {
           isEdge: true,
           hasQuery: true,
           foreignCollection,
         });
+
+        errorCount += result.errors;
       } catch (err) {
         this.notify({
           message: 'Failed to import edges',
@@ -128,6 +151,12 @@ class ArangoDatabase extends MigrationDatabase {
         });
         throw err;
       }
+    }
+
+    if (errorCount > 0) {
+      this.notify({
+        message: `${errorCount} query edges were not able to be imported.`,
+      });
     }
 
     this.notify({
@@ -150,7 +179,7 @@ class ArangoDatabase extends MigrationDatabase {
       hasQuery?: boolean;
       foreignCollection?: string;
     }
-  ): Promise<void> {
+  ): Promise<CollectionImportResult> {
     const collectionExists = await this.connection
       .collection(collection)
       .exists();
@@ -163,10 +192,14 @@ class ArangoDatabase extends MigrationDatabase {
 
       !collectionExists &&
         (await this.connection.createEdgeCollection(collection));
-      await this.connection.collection(collection).import(edges);
+      return await this.connection
+        .collection(collection)
+        .import(edges, { details: true });
     } else {
       !collectionExists && (await this.connection.createCollection(collection));
-      await this.connection.collection(collection).import(nodes);
+      return await this.connection
+        .collection(collection)
+        .import(nodes, { details: true });
     }
   }
 
