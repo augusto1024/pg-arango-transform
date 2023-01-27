@@ -36,8 +36,8 @@ type TableRowsResponse = Record<string, unknown>;
 type GraphNode = Record<string, unknown> & { _key: string };
 type GraphEdge = Record<string, unknown> & { _from: string; _to: string };
 
-type NodePreview = { id: number; label: string };
-type EdgePreview = { from: number; to: number };
+type NodePreview = { id: string; label: string };
+type EdgePreview = { from: string; to: string };
 
 type GraphPreview = {
   nodes: NodePreview[];
