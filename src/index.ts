@@ -66,42 +66,33 @@ class Transform {
     }
   }
 
+  public async getGraphPreview();
+
   /**
    * Returns an object that represents the preview graph.
    * @returns {GraphPreview} The preview Graph.
    */
-  // TODO: FIX
   public async getGraphPreview(): Promise<GraphPreview> {
     this.checkInit();
 
     const tables = await this.postgresDatabase.getTables();
 
-    let nodeCount = 0;
-
-    const nodes: Record<string, number> = {};
+    const nodes: NodePreview[] = [];
     const edges: EdgePreview[] = [];
 
-    // for (const table of tables) {
-    //   if (!nodes[table.name]) {
-    //     nodes[table.name] = nodeCount;
-    //     nodeCount++;
-    //   }
-    //   for (const column of Object.values(table.columns)) {
-    //     if (column.isForeignKey) {
-    //       if (!nodes[column.foreignTableName]) {
-    //         nodes[column.foreignTableName] = nodeCount;
-    //         nodeCount++;
-    //       }
-    //       edges.push({
-    //         from: nodes[table.name],
-    //         to: nodes[column.foreignTableName],
-    //       });
-    //     }
-    //   }
-    // }
+    for (let table of tables) {
+      nodes.push({ id: table.name, label: table.name });
+
+      for (let column of table.foreignKeys) {
+        edges.push({
+          from: table.name,
+          to: column.foreignTable,
+        });
+      }
+    }
 
     return {
-      nodes: Object.keys(nodes).map((label) => ({ id: nodes[label], label })),
+      nodes,
       edges,
     };
   }
