@@ -1,10 +1,10 @@
 ## Instructions
 
-### Run the project
+### Build the project
 
 - Create a `.env` file at the root of the project with the env vars from `.env.template` (Arango & Postgres credentials)
 - Run `npm install`
-- Run `npm run start`
+- Run `npm run build`
 
 ### Eject migration
 

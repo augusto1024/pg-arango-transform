@@ -32,14 +32,14 @@ class Transform {
 
     try {
       await this.arangoDatabase.init();
-    } catch {
-      throw new Error('Failed to connect to Arango database');
+    } catch (error) {
+      throw new Error(error);
     }
 
     try {
       await this.postgresDatabase.init();
-    } catch (e) {
-      throw new Error('Failed to connect to Postgres database');
+    } catch (error) {
+      throw new Error(error);
     }
 
     this.notify({
