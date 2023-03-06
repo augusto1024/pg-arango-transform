@@ -30,11 +30,12 @@ class ArangoDatabase extends MigrationDatabase {
       const exists = await this.connection.exists();
 
       if (!exists) {
+        const error = `ArangoDB database "${this.config.databaseName}" doesn't exist`;
         this.notify({
-          message: `ArangoDB database "${this.config.databaseName}" doesn't exist`,
+          message: error,
           type: 'error',
         });
-        throw new Error("The database doesn't exist");
+        throw new Error(error);
       }
     } catch (err) {
       this.notify({
