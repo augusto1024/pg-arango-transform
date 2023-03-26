@@ -301,13 +301,13 @@ export default class PgDatabase extends MigrationDatabase {
 
     const keys = Object.values(
       foreignKeys.reduce((keys, key) => {
-        if (keys[key.foreignTableName]) {
-          keys[key.foreignTableName].columns.push({
+        if (keys[key.constraintName]) {
+          keys[key.constraintName].columns.push({
             name: key.columnName,
             foreignColumn: key.foreignColumnName,
           });
         } else {
-          keys[key.foreignTableName] = {
+          keys[key.constraintName] = {
             name: key.constraintName,
             foreignTable: key.foreignTableName,
             pointsToPK: undefined,

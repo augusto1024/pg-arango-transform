@@ -275,7 +275,10 @@ class ArangoDatabase extends MigrationDatabase {
    */
   public async createGraph(name: string): Promise<void> {
     const collections = await this.connection.collections();
-    const collectionsNames = collections.map((collection) => collection.name);
+    // TODO: Remove hardcoded "edges" collection name
+    const collectionsNames = collections
+      .map((collection) => collection.name)
+      .filter((collection) => collection !== 'edges');
 
     await this.connection.createGraph(name, [
       {
