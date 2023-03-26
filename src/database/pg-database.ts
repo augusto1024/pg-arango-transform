@@ -144,7 +144,7 @@ export default class PgDatabase extends MigrationDatabase {
     const cursorName = `${table.name}_cursor`;
 
     await this.connection.query(`
-      DECLARE ${cursorName} CURSOR FOR SELECT * FROM ${table.name};
+      DECLARE ${cursorName} CURSOR FOR SELECT * FROM ${table.schema}.${table.name};
     `);
 
     while (!done) {
